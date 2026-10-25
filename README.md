@@ -25,6 +25,18 @@ To host it for free, use GitHub Pages: open the repo's **Settings → Pages**, s
 
 No login is required.
 
+## Manage a booking (`manage.html`)
+
+Clients enter their reference and mobile number to see their booking and cancel it. If the visit is within the cancellation window, the page warns that a fee may apply. To reschedule, they cancel and book again. The confirmation screen links straight here.
+
+## Front desk (`staff.html`)
+
+- **Schedule.** A day view with one column per provider. Tap an appointment to check the client in, mark a no-show, or cancel. Cancelling frees the time for online booking straight away. Cancelled visits are listed below the grid.
+- **Waitlist.** Everyone waiting from today on, with the times that are open for their visit right now. One tap opens a text with the opening already written.
+- **Time off.** A provider requests time off, and the manager approves or denies it. The request lists any appointments already booked in that window. Approved time off blocks online booking. Pending requests show on the schedule but don't block anything yet.
+
+There's no login yet, so don't share the link widely.
+
 ## Files
 
 | File | What it does |
@@ -34,20 +46,22 @@ No login is required.
 | `js/config.js` | **Edit this file.** It holds hours, services, prices, durations, providers and policy |
 | `js/api.js` | Data layer. It is a **mock** for now (see below) |
 | `js/app.js` | The booking flow |
+| `manage.html`, `js/manage.js` | Client lookup and cancel |
+| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off |
 | `assets/buff-logo.png` | Logo, taken from a screenshot of buffbeautybar.com |
 
 ## Status and next steps
 
-- **Mock data.** Openings are simulated, and bookings are kept only until the page reloads. Replace the three functions in `js/api.js` (`getAvailability`, `createBooking`, `joinWaitlist`) with calls to a real backend. `app.js` won't need any changes.
+- **Mock data.** Each provider's day is pre-filled with sample appointments (gray on the front desk). Real bookings, the waitlist and time off are saved in the browser's `localStorage`. That means the client pages and the front desk share data only on the same device. Use **Reset demo data** on the front desk to clear it. To go live, replace the functions in `js/api.js` with calls to a real backend. The pages won't need any changes.
 - **To confirm with Buff** (marked `TODO(Buff)` in `config.js`):
   - opening hours
   - how long each service takes (current values are estimates)
   - the provider list
   - the street address (the site shows both 20 and 720 Carondelet St)
-- **Coming next:**
-  - Stripe card on file
-  - Twilio text reminders
-  - provider schedules with manager approval
+- **Coming next** (these need a backend):
+  - a real database and a staff login
+  - Stripe card on file, and charging late-cancel and no-show fees
+  - Twilio texts: confirmations, reminders and waitlist alerts sent automatically
   - manager calendar and dashboard
   - gift cards
   - QuickBooks sync

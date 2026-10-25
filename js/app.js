@@ -23,6 +23,7 @@
     errors: {},
     submitting: false,
     result: null,
+    notice: null,          // shown on step 3, e.g. when a time was just taken
   };
 
   var STEP_LABELS = ['Services', 'Provider', 'Date & time', 'Your details'];
@@ -100,7 +101,8 @@
       (state.guests > 1 ? '<p class="muted sm center">Each guest gets the same services, side by side. Need something different for each? Add a note at checkout.</p>' : '') +
       '<div class="chips" role="toolbar" aria-label="Service categories">' + chips + '</div>' +
       '<ul class="card list" aria-label="' + esc(state.cat) + ' services">' + rows + '</ul>' +
-      '<p class="muted sm center">Nail art, extra styling time or something not listed? Add a note at checkout.</p>';
+      '<p class="muted sm center">Nail art, extra styling time or something not listed? Add a note at checkout.</p>' +
+      '<a class="link center" href="manage.html">Already booked? Change or cancel</a>';
   }
 
   function viewProvider() {
@@ -156,7 +158,8 @@
         (state.waitlist ? 'You’ll join the waitlist for ' + esc(longDate(state.date)) : 'Don’t see your time? Join the waitlist') + '</button>'
       : '';
 
-    return '<h1 class="h1">When works for you?</h1>' +
+    var notice = state.notice ? '<p class="notice" role="alert">' + esc(state.notice) + '</p>' : '';
+    return '<h1 class="h1">When works for you?</h1>' + notice +
       '<div class="days" role="toolbar" aria-label="Choose a day">' + days.join('') + '</div>' +
       (state.date ? '<div class="label">' + esc(longDate(state.date)) + ' · ' + totals().mins + ' min · ' + esc(providerName(state.provider)) + '</div>' : '') +
       '<div class="card pad-sm">' + body + '</div>' + wl;
@@ -195,7 +198,8 @@
       '</div>') +
       '<label class="agree' + (agreeErr ? ' has-err' : '') + '"><input type="checkbox" id="f-agree"' + (state.client.agree ? ' checked' : '') + '>' +
         '<span>I agree to the <a href="' + CFG.business.cancellationPolicyUrl + '" target="_blank" rel="noopener">cancellation policy</a>. Cancellations within ' + CFG.business.cancellationWindowHours + ' hours or no-shows may be charged.</span></label>' +
-      (agreeErr ? '<span class="err">' + esc(agreeErr) + '</span>' : '');
+      (agreeErr ? '<span class="err">' + esc(agreeErr) + '</span>' : '') +
+      (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
   }
 
   function viewDone() {
@@ -208,6 +212,7 @@
       summaryCard() +
       '<p class="center xs muted">Reference ' + esc(r.id) + ' · ' + esc(CFG.business.name) + ', ' + esc(CFG.business.address) + '</p>' +
       (wl ? '' : '<button class="btn-outline" data-act="ics">Add to calendar</button>') +
+      (wl ? '' : '<a class="link center" href="manage.html?ref=' + encodeURIComponent(r.id) + '">Need to cancel? Manage this booking</a>') +
       '<button class="link" data-act="restart">Book another visit</button></div>';
   }
 
@@ -266,14 +271,14 @@
     }
     else if (act === 'guests') { state.guests = Math.max(1, Math.min(CFG.booking.maxGuests, state.guests + +v)); state.slots = null; state.slot = null; render(); }
     else if (act === 'pro') { state.provider = v; state.slots = null; state.slot = null; render(); }
-    else if (act === 'date') { state.date = v; loadSlots(); }
+    else if (act === 'date') { state.date = v; state.notice = null; loadSlots(); }
     else if (act === 'slot') {
       state.slot = state.slots.slots.filter(function (x) { return x.time === v; })[0];
-      state.waitlist = false; render();
+      state.waitlist = false; state.notice = null; render();
     }
     else if (act === 'waitlist') { state.waitlist = !state.waitlist; if (state.waitlist) { state.slot = null; } render(); }
     else if (act === 'restart') {
-      state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {};
+      state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {}; state.notice = null;
       go(1);
     }
     else if (act === 'ics') { downloadIcs(); }
@@ -329,7 +334,11 @@
     };
     var p = state.waitlist ? API.joinWaitlist(payload)
       : API.createBooking(Object.assign(payload, { time: state.slot.time, providerIds: state.slot.providerIds }));
-    p.then(function (res) { state.submitting = false; state.result = res; go(5); });
+    p.then(function (res) { state.submitting = false; state.result = res; go(5); }, function (err) {
+      state.submitting = false;
+      if (err.code === 'taken') { state.notice = 'Sorry, that time was just booked. Please pick another.'; go(3); loadSlots(); return; }
+      state.errors = { form: 'Something went wrong. Please try again or call us.' }; render();
+    });
   }
 
   function downloadIcs() {

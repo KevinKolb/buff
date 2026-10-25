@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FBE9DD">
+  <meta name="robots" content="noindex">
+  <title>Front desk · Buff Beauty Bar</title>
+  <link rel="icon" href="assets/buff-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/staff.css">
+</head>
+<body class="staff-body">
+  <div class="staff">
+    <header class="s-top">
+      <a class="s-logo" href="staff.html" aria-label="Front desk home"><img src="assets/buff-logo.png" alt="Buff Beauty Bar" width="581" height="576"></a>
+      <div class="s-title">Front desk</div>
+      <a class="s-book" href="index.html" target="_blank" rel="noopener">+ New booking</a>
+    </header>
+    <nav class="s-tabs" aria-label="Sections">
+      <button class="s-tab" data-tab="schedule">Schedule</button>
+      <button class="s-tab" data-tab="waitlist">Waitlist <span id="wl-count" class="pill" hidden></span></button>
+      <button class="s-tab" data-tab="timeoff">Time off <span id="to-count" class="pill" hidden></span></button>
+    </nav>
+    <p class="proto-note">Prototype: no login yet, and data is saved only in this browser. Gray appointments are sample data. <button class="link-inline" data-act="reset">Reset demo data</button></p>
+    <main id="s-main" class="s-main" aria-live="polite"></main>
+  </div>
+
+  <dialog id="sheet" class="sheet" aria-labelledby="sheet-title"></dialog>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/staff.js"></script>
+</body>
+</html>
