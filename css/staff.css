@@ -89,3 +89,4 @@
 .s-lists { display: flex; flex-direction: column; gap: 10px; }
 @media (min-width: 860px) { .s-two { grid-template-columns: 380px 1fr; } }
 .link-inline { border: none; background: none; padding: 0; font: inherit; color: var(--slate); text-decoration: underline; cursor: pointer; }
+.s-auth { max-width: 420px; margin: 24px auto 0; width: 100%; }

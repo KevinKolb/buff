@@ -1,7 +1,7 @@
 // Buff Beauty Bar — client booking flow.
 // Steps: 1 services → 2 provider → 3 date & time → 4 details → 5 confirmation.
 
-(function () {
+window.BuffAPI.ready.then(function () {
   var CFG = window.BUFF_CONFIG;
   var API = window.BuffAPI;
 
@@ -360,4 +360,4 @@
   $('#call').href = CFG.business.phoneHref;
   $('#call').setAttribute('aria-label', 'Call ' + CFG.business.name + ' at ' + CFG.business.phone);
   render();
-})();
+});

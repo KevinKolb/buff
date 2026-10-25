@@ -134,6 +134,9 @@
   }
 
   window.BuffAPI = {
+    mode: 'demo',
+    ready: Promise.resolve(),
+
     // ======== client booking ========
 
     /**
@@ -178,6 +181,21 @@
       var b = db.bookings.filter(function (x) { return x.id === r && digits(x.client.phone) === digits(phone); })[0];
       return delay(b || null);
     },
+
+    /** Client cancels their own booking. Rejects with code 'not_found' if no match or not cancellable. */
+    cancelBooking: function (ref, phone) {
+      sync();
+      var r = String(ref || '').trim().toUpperCase();
+      var b = db.bookings.filter(function (x) { return x.id === r && digits(x.client.phone) === digits(phone) && x.status === 'booked'; })[0];
+      if (!b) { return fail('not_found', 'Booking not found.'); }
+      b.status = 'cancelled'; b.cancelledBy = 'client'; b.cancelledAt = new Date().toISOString(); save();
+      return delay(b);
+    },
+
+    // ======== staff sign-in (demo: everyone is the manager) ========
+    getStaff: function () { return delay({ email: 'demo', role: 'manager' }); },
+    signIn: function () { return delay(true); },
+    signOut: function () { return delay(true); },
 
     // ======== front desk ========
 

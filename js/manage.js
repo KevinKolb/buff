@@ -1,7 +1,7 @@
 // Buff Beauty Bar — client "manage my booking".
 // Look up by reference + mobile, then cancel. To reschedule, cancel and book again.
 
-(function () {
+window.BuffAPI.ready.then(function () {
   var CFG = window.BUFF_CONFIG;
   var API = window.BuffAPI;
 
@@ -51,7 +51,7 @@
       return '<h1 class="h1">This booking was cancelled</h1>' + bookingCard(b) +
         '<a class="btn-primary as-link" href="index.html">Book a new visit</a>';
     }
-    var past = hoursUntil(b) < 0;
+    var past = hoursUntil(b) < 0 || b.status !== 'booked'; // checked in or no-show
     if (past) {
       return '<h1 class="h1">This visit has passed</h1>' + bookingCard(b) +
         '<a class="btn-primary as-link" href="index.html">Book again</a>';
@@ -65,7 +65,8 @@
           '<button class="btn-danger" data-act="cancel"' + (state.busy ? ' disabled' : '') + '>' + (state.busy ? 'Cancelling…' : 'Yes, cancel it') + '</button>' +
           '<button class="link" data-act="keep">Keep my booking</button></div>'
       : '<button class="btn-outline" data-act="ask">Cancel booking</button>';
-    return '<h1 class="h1">Here’s your booking</h1>' + bookingCard(b) + warn + actions +
+    var err = state.error ? '<p class="notice" role="alert">' + esc(state.error) + '</p>' : '';
+    return '<h1 class="h1">Here’s your booking</h1>' + bookingCard(b) + warn + err + actions +
       '<p class="muted sm center">Want a different time? Cancel this one, then <a href="index.html">book a new time</a>. Or call us at <a href="' + CFG.business.phoneHref + '">' + esc(CFG.business.phone) + '</a>.</p>';
   }
 
@@ -102,7 +103,7 @@
     API.findBooking(state.ref, state.phone).then(function (b) {
       state.busy = false;
       if (!b) { state.error = 'We couldn’t find a booking with that reference and number.'; render(); return; }
-      state.booking = b; show('booking');
+      state.booking = b; state.error = ''; show('booking');
     });
   });
 
@@ -114,8 +115,10 @@
     else if (act === 'keep') { state.confirming = false; render(); }
     else if (act === 'cancel') {
       state.busy = true; render();
-      API.setBookingStatus(state.booking.id, 'cancelled', 'client').then(function (b) {
+      API.cancelBooking(state.booking.id, state.phone).then(function (b) {
         state.busy = false; state.booking = b; show('done');
+      }, function () {
+        state.busy = false; state.error = 'We couldn’t cancel this booking. Please call us.'; render();
       });
     }
   });
@@ -123,4 +126,4 @@
   $('#call').href = CFG.business.phoneHref;
   $('#call').setAttribute('aria-label', 'Call ' + CFG.business.name + ' at ' + CFG.business.phone);
   render();
-})();
+});

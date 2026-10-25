@@ -1,7 +1,7 @@
 // Buff Beauty Bar — front desk.
 // Tabs: Schedule (day view by provider) · Waitlist · Time off (request + manager approval).
 
-(function () {
+window.BuffAPI.ready.then(function () {
   var CFG = window.BUFF_CONFIG;
   var API = window.BuffAPI;
   var PX = 1.6; // schedule pixels per minute
@@ -16,6 +16,10 @@
     form: { providerId: CFG.providers[0].id, date: isoDate(new Date()), allDay: true, start: '12:00', end: '15:00', reason: '' },
     formError: '',
     loading: true,
+    auth: 'checking',  // checking → signin → sent | denied | ok
+    staff: null,       // { email, role, providerId }
+    signInEmail: '',
+    signInError: '',
   };
 
   // ---------- helpers ----------
@@ -32,6 +36,7 @@
   function hoursOn(iso) { var h = CFG.hours[fromISO(iso).getDay()]; return h ? { open: API.toMin(h.open), close: API.toMin(h.close) } : null; }
   function fmt(m) { return API.formatTime(m); }
   function range(t) { return t.allDay ? 'All day' : fmt(t.start) + ' – ' + fmt(t.end); }
+  function isManager() { return state.staff && state.staff.role === 'manager'; }
   var STATUS = { booked: 'Booked', arrived: 'Checked in', 'no-show': 'No-show', cancelled: 'Cancelled' };
 
   // ---------- data ----------
@@ -179,7 +184,8 @@
   // ---------- time off ----------
   function viewTimeOff() {
     var f = state.form;
-    var pros = CFG.providers.map(function (p) { return '<option value="' + p.id + '"' + (p.id === f.providerId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('');
+    var own = state.staff && state.staff.role === 'provider' && state.staff.providerId;
+    var pros = CFG.providers.filter(function (p) { return !own || p.id === own; }).map(function (p) { return '<option value="' + p.id + '"' + (p.id === f.providerId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('');
     var form = '<form id="to-form" class="card form" novalidate>' +
       '<div class="b">Request time off</div>' +
       '<div class="field"><label for="to-pro">Provider</label><select id="to-pro" name="providerId">' + pros + '</select></div>' +
@@ -210,7 +216,8 @@
           '<div class="muted sm">' + esc(shortDate(t.date)) + ' · ' + range(t) + (t.reason ? ' · ' + esc(t.reason) : '') + '</div></div>' +
           (withActions ? '' : '<span class="badge is-' + t.status + '">' + (t.status === 'approved' ? 'Approved' : 'Denied') + '</span>') + '</div>' +
         conflicts +
-        (withActions ? '<div class="row-wrap"><button class="btn-primary sm" data-act="to-decide" data-v="approved" data-id="' + esc(t.id) + '">Approve</button>' +
+        (withActions && !isManager() ? '<div class="muted sm">Waiting for the manager.</div>' : '') +
+        (withActions && isManager() ? '<div class="row-wrap"><button class="btn-primary sm" data-act="to-decide" data-v="approved" data-id="' + esc(t.id) + '">Approve</button>' +
           '<button class="btn-outline sm" data-act="to-decide" data-v="denied" data-id="' + esc(t.id) + '">Deny</button>' +
           '<button class="link sm" data-act="to-view" data-v="' + esc(t.date) + '">See day</button></div>' : '') +
       '</li>';
@@ -227,8 +234,47 @@
       '</div>';
   }
 
+  // ---------- sign-in ----------
+  function viewAuth() {
+    if (state.auth === 'checking') { return '<p class="muted center pad" role="status">Checking sign-in…</p>'; }
+    if (state.auth === 'sent') {
+      return '<div class="card form s-auth"><h1 class="h1">Check your email</h1>' +
+        '<p>We sent a sign-in link to <b>' + esc(state.signInEmail) + '</b>. Open it on this device.</p>' +
+        '<button class="link" data-act="auth-retry">Use a different email</button></div>';
+    }
+    if (state.auth === 'denied') {
+      return '<div class="card form s-auth"><h1 class="h1">Not on the staff list</h1>' +
+        '<p><b>' + esc(state.staff.email) + '</b> is signed in but isn’t set up as staff. Ask the manager to add you.</p>' +
+        '<button class="btn-outline" data-act="signout">Sign out</button></div>';
+    }
+    return '<form id="signin" class="card form s-auth" novalidate><h1 class="h1">Staff sign-in</h1>' +
+      '<div class="field"><label for="si-email">Work email</label><input id="si-email" name="email" type="email" autocomplete="email" value="' + esc(state.signInEmail) + '"></div>' +
+      (state.signInError ? '<p class="notice" role="alert">' + esc(state.signInError) + '</p>' : '') +
+      '<button class="btn-primary" type="submit">Email me a sign-in link</button>' +
+      '<p class="muted xs">No password needed. The link signs you in on this device.</p></form>';
+  }
+
+  function checkAuth() {
+    return API.getStaff().then(function (s) {
+      state.staff = s;
+      state.auth = !s ? 'signin' : s.role ? 'ok' : 'denied';
+      if (s && s.role === 'provider' && s.providerId) { state.form.providerId = s.providerId; }
+      render();
+      if (state.auth === 'ok') { return load(); }
+    }, function () { state.auth = 'signin'; state.signInError = 'Couldn’t reach the server. Check your connection.'; render(); });
+  }
+
   // ---------- render ----------
   function render() {
+    var signedIn = state.auth === 'ok';
+    $('.s-tabs').hidden = !signedIn;
+    $('.proto-note').hidden = !signedIn;
+    $('#signout').hidden = !signedIn || API.mode !== 'live';
+    if (!signedIn) { $('#s-main').innerHTML = viewAuth(); return; }
+    if (API.mode === 'live') {
+      $('.proto-note').innerHTML = 'Signed in as ' + esc(state.staff.email) + ' (' + esc(state.staff.role) + ').';
+    }
+
     document.querySelectorAll('.s-tab').forEach(function (t) {
       var on = t.getAttribute('data-tab') === state.tab;
       t.classList.toggle('is-on', on);
@@ -297,6 +343,8 @@
       el.disabled = true;
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
+    else if (act === 'auth-retry') { state.auth = 'signin'; render(); }
+    else if (act === 'signout') { API.signOut().then(function () { state.staff = null; state.auth = 'signin'; render(); }); }
     else if (act === 'reset') {
       if (!confirm('Delete all bookings, waitlist entries and time off saved in this browser?')) { return; }
       API.resetDemo().then(load);
@@ -319,6 +367,20 @@
   }
 
   document.addEventListener('submit', function (e) {
+    if (e.target.id !== 'signin') { return; }
+    e.preventDefault();
+    var email = e.target.email.value.trim();
+    state.signInEmail = email;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { state.signInError = 'Please enter your email.'; render(); return; }
+    state.signInError = '';
+    e.target.querySelector('button[type=submit]').disabled = true;
+    API.signIn(email).then(function () { state.auth = 'sent'; render(); }, function (err) {
+      state.signInError = /rate|seconds/i.test(err.message) ? 'Too many tries. Wait a minute and try again.' : 'Couldn’t send the link. Try again.';
+      render();
+    });
+  });
+
+  document.addEventListener('submit', function (e) {
     if (e.target.id !== 'to-form') { return; }
     e.preventDefault();
     var f = state.form;
@@ -333,15 +395,16 @@
   });
 
   // keep the "now" line and waitlist openings fresh, and pick up bookings made in another tab
-  setInterval(function () { if (!$('#sheet').open && document.activeElement.tagName !== 'INPUT') { load(); } }, 60 * 1000);
-  window.addEventListener('storage', function () { if (!$('#sheet').open) { load(); } });
+  setInterval(function () { if (state.auth === 'ok' && !$('#sheet').open && document.activeElement.tagName !== 'INPUT') { load(); } }, 60 * 1000);
+  window.addEventListener('storage', function () { if (state.auth === 'ok' && !$('#sheet').open) { load(); } });
 
   function tabFromHash() {
     var t = (location.hash || '').slice(1);
     return ['schedule', 'waitlist', 'timeoff'].indexOf(t) >= 0 ? t : null;
   }
-  window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab) { setTab(t); load(); } });
+  window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab && state.auth === 'ok') { setTab(t); load(); } });
 
   state.tab = tabFromHash() || 'schedule';
-  load();
-})();
+  render();
+  checkAuth();
+});

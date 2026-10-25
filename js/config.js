@@ -3,6 +3,15 @@
 // TODO(Buff): confirm hours, service durations, and provider list.
 
 window.BUFF_CONFIG = {
+  // Live database. Leave both blank to run in demo mode (sample data, saved
+  // only in this browser). The key is the *publishable* one — safe to share.
+  // When these are set, hours, providers, services and booking settings come
+  // from the database, and the values further down this file are ignored.
+  backend: {
+    supabaseUrl: '',
+    supabaseKey: '',
+  },
+
   business: {
     name: 'Buff Beauty Bar',
     phone: '504-522-2833',
