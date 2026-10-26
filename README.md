@@ -117,6 +117,18 @@ What it will take:
 - **Business side:** a referral or partner agreement with the insurer. Selling or recommending insurance for a commission can require an insurance producer license, so check with a lawyer first.
 - **Later:** offer clients optional coverage, or require coverage levels for co-op providers.
 
+### To do: revenue reports for providers
+
+A report for each provider (and managers across the team) showing what they earned and what they lost.
+
+- **Earned:** completed visits by day, week and month: services, totals after specials, and gift card amounts used.
+- **Lost:** money from late cancellations and no-shows (the visit price), split by type, with the clients involved; plus cancellations made in time, shown separately since those slots could be rebooked.
+- **Recovered:** slots refilled from the waitlist or by another booking, and late-cancel and no-show fees actually charged (once card payments are set up), so the net loss is clear.
+- **Also useful:** empty bookable hours (open time nobody booked), discounts given through specials, and repeat clients versus new ones.
+- **Who sees what:** providers see only their own numbers; managers see everyone, plus totals for the business.
+- **Data it needs:** the booking table already records status, who cancelled and when, and the price at booking. Add the fee charged and whether a cancelled slot was rebooked. Providers' pay terms (commission, booth rent) would turn revenue into their actual take-home.
+- **Where:** a Reports tab on the front desk, with a date range picker and a download to spreadsheet.
+
 ### Someday: providers rate clients
 
 A "Rate My Professor" style rating, turned around: after a visit, the provider rates the client so the team knows who's a pleasure to book and who needs care.
