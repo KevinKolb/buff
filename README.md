@@ -49,6 +49,7 @@ There's no login yet, so don't share the link widely.
 | `manage.html`, `js/manage.js` | Client lookup and cancel |
 | `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team (photos, Instagram), locations (where each provider works, days, travel time) and staff logins, menu, specials, gift cards, business details, hours and booking rules |
 | `js/places.js` | Places: where providers work, travel time between places (estimated from the map or set by hand), map lookup. The database (`_works_there`, `_travel_min`, `_free_at`) decides what can be booked |
+| `tools/stamp.py` | Adds `?v=<version>` to the CSS and JS links in every page so browsers pick up changes right away. Run it before committing JS or CSS changes |
 | `js/legal.js` | The front desk Legal tab: possible legal issues by category (edit the list here) |
 | `book.html`, `js/book.js` | Staff booking for phone and walk-in clients, with the day's schedule alongside |
 | `account.html`, `js/account.js` | Client sign-in: upcoming and past visits, cancel, update name and mobile |
