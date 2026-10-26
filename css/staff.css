@@ -90,3 +90,6 @@
 @media (min-width: 860px) { .s-two { grid-template-columns: 380px 1fr; } }
 .link-inline { border: none; background: none; padding: 0; font: inherit; color: var(--slate); text-decoration: underline; cursor: pointer; }
 .s-auth { max-width: 420px; margin: 24px auto 0; width: 100%; }
+.s-team-row { grid-template-columns: 90px 1fr; }
+.s-move .round { font-size: 18px; }
+.is-hidden-pro { opacity: .75; }

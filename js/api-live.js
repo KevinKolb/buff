@@ -195,6 +195,26 @@
       });
     },
 
+    // ======== team (managers) ========
+
+    listProviders: function () {
+      return sb.from('providers').select('*').order('sort').order('id').then(unwrap).then(function (rows) {
+        return rows.map(function (p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb, sort: p.sort, active: p.active }; });
+      });
+    },
+
+    saveProvider: function (p, isNew) {
+      var row = { name: p.name, initials: p.initials, blurb: p.blurb, sort: p.sort, active: p.active };
+      var q = isNew ? sb.from('providers').insert(Object.assign({ id: p.id }, row)) : sb.from('providers').update(row).eq('id', p.id);
+      return q.select().single().then(unwrap).then(function () {
+        // keep this page's provider list (schedule columns, menus) in step
+        return sb.from('providers').select('*').eq('active', true).order('sort').then(unwrap);
+      }).then(function (rows) {
+        CFG.providers = rows.map(function (x) { return { id: x.id, name: x.name, initials: x.initials, blurb: x.blurb }; });
+        return p;
+      });
+    },
+
     decideTimeOff: function (id, status) {
       return sb.auth.getSession().then(function (res) {
         return sb.from('time_off').update({ status: status, decided_by: res.data.session.user.email, decided_at: new Date().toISOString() })

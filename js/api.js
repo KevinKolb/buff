@@ -38,7 +38,9 @@
     db.waitlist = db.waitlist || [];
     db.timeOff = db.timeOff || [];
     db.sampleStatus = db.sampleStatus || {}; // status changes made to seeded sample appointments
+    if (db.providers) { CFG.providers = db.providers.filter(function (p) { return p.active; }); } // edited on the Team tab
   }
+  sync();
   function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* keep working in memory */ } }
 
   function hoursOn(dateISO) {
@@ -273,13 +275,37 @@
       return delay(t);
     },
 
+    // ======== team (managers) ========
+
+    /** Every provider, including hidden ones, in display order. */
+    listProviders: function () {
+      sync();
+      return delay(allProviders());
+    },
+
+    /** Creates (isNew) or updates a provider: { id, name, initials, blurb, sort, active }. */
+    saveProvider: function (p, isNew) {
+      sync();
+      var list = allProviders();
+      if (isNew) { list.push(p); } else { list = list.map(function (x) { return x.id === p.id ? Object.assign({}, x, p) : x; }); }
+      db.providers = list.sort(function (a, b) { return a.sort - b.sort; });
+      CFG.providers = db.providers.filter(function (x) { return x.active; });
+      save();
+      return delay(p);
+    },
+
     /** Deletes everything saved in this browser (prototype only). */
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; save();
+      if (db.providers) { delete db.providers; save(); location.reload(); }
       return delay(true);
     },
   };
+
+  function allProviders() {
+    return clone(db.providers || CFG.providers.map(function (p, i) { return Object.assign({ sort: i, active: true }, p); }));
+  }
 
   function isoToday() {
     var d = new Date(), m = d.getMonth() + 1, day = d.getDate();

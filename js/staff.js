@@ -16,6 +16,9 @@ window.BuffAPI.ready.then(function () {
     form: { providerId: CFG.providers[0].id, date: isoDate(new Date()), allDay: true, start: '12:00', end: '15:00', reason: '' },
     formError: '',
     loading: true,
+    team: null,        // all providers incl. hidden (managers' Team tab)
+    drafts: {},        // unsaved edits on the Team tab, by provider id ('new' for the add form)
+    teamMsg: {},       // per-card status line, by provider id
     auth: 'checking',  // checking → signin → sent | denied | ok
     staff: null,       // { email, role, providerId }
     signInEmail: '',
@@ -234,6 +237,102 @@ window.BuffAPI.ready.then(function () {
       '</div>';
   }
 
+  // ---------- team (managers) ----------
+  function loadTeam() {
+    return API.listProviders().then(function (list) { state.team = list; render(); });
+  }
+
+  function draftFor(p) {
+    return state.drafts[p.id] || { name: p.name, initials: p.initials, blurb: p.blurb, active: p.active };
+  }
+
+  function teamFields(id, d) {
+    return '<div class="field"><label for="tm-name-' + id + '">Name</label><input id="tm-name-' + id + '" data-team="' + id + '" name="name" type="text" maxlength="40" autocomplete="off" value="' + esc(d.name) + '"></div>' +
+      '<div class="row-2 s-team-row">' +
+        '<div class="field"><label for="tm-ini-' + id + '">Initials</label><input id="tm-ini-' + id + '" data-team="' + id + '" name="initials" type="text" maxlength="3" autocomplete="off" autocapitalize="characters" value="' + esc(d.initials) + '"></div>' +
+        '<div class="field"><label for="tm-blurb-' + id + '">Shown under name</label><input id="tm-blurb-' + id + '" data-team="' + id + '" name="blurb" type="text" maxlength="60" autocomplete="off" placeholder="Hair · Makeup" value="' + esc(d.blurb) + '"></div>' +
+      '</div>';
+  }
+
+  function viewTeam() {
+    if (!isManager()) { return '<h1 class="h1">Team</h1><div class="card pad"><p class="center muted">Only managers can edit the team.</p></div>'; }
+    if (!state.team) { return '<h1 class="h1">Team</h1><p class="muted center pad" role="status">Loading…</p>'; }
+    var cards = state.team.map(function (p, i) {
+      var d = draftFor(p);
+      var dirty = !!state.drafts[p.id];
+      var msg = state.teamMsg[p.id];
+      return '<li class="card s-wl' + (p.active ? '' : ' is-hidden-pro') + '">' +
+        '<div class="row-between"><div class="row-wrap"><span class="avatar">' + esc(d.initials || '?') + '</span>' +
+          '<div><div class="b">' + esc(d.name || 'Unnamed') + '</div><div class="muted xs">' + (p.active ? 'On the booking page' : 'Hidden from booking') + '</div></div></div>' +
+          '<div class="row-wrap s-move">' +
+            '<button class="round" data-act="tm-move" data-v="-1" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+            '<button class="round" data-act="tm-move" data-v="1" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' down"' + (i === state.team.length - 1 ? ' disabled' : '') + '>↓</button>' +
+          '</div></div>' +
+        teamFields(p.id, d) +
+        '<label class="agree"><input type="checkbox" data-team="' + esc(p.id) + '" name="active"' + (d.active ? ' checked' : '') + '><span>Show on the booking page</span></label>' +
+        (msg ? '<p class="' + (msg.err ? 'notice' : 'muted sm') + '" role="status">' + esc(msg.text) + '</p>' : '') +
+        '<div class="row-wrap"><button class="btn-primary sm" data-act="tm-save" data-id="' + esc(p.id) + '"' + (dirty ? '' : ' disabled') + '>Save</button>' +
+          (dirty ? '<button class="link sm" data-act="tm-undo" data-id="' + esc(p.id) + '">Undo changes</button>' : '') + '</div>' +
+      '</li>';
+    }).join('');
+    var nd = state.drafts['new'] || { name: '', initials: '', blurb: '' };
+    var nmsg = state.teamMsg['new'];
+    var add = '<div class="card form"><div class="b">Add a provider</div>' + teamFields('new', nd) +
+      (nmsg ? '<p class="' + (nmsg.err ? 'notice' : 'muted sm') + '" role="status">' + esc(nmsg.text) + '</p>' : '') +
+      '<button class="btn-primary" data-act="tm-add">Add provider</button></div>';
+    return '<h1 class="h1">Team</h1>' +
+      '<p class="muted sm">Names and descriptions show on the booking page and the schedule. Hide someone who has left instead of deleting them, so their past bookings keep their name.</p>' +
+      '<div class="s-two"><section class="s-lists"><ul class="stack">' + cards + '</ul></section><section>' + add + '</section></div>';
+  }
+
+  function cleanDraft(d) {
+    var name = String(d.name || '').trim().replace(/\s+/g, ' ');
+    var initials = String(d.initials || '').trim().toUpperCase();
+    if (!initials) { initials = name.split(' ').map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase(); }
+    return { name: name, initials: initials, blurb: String(d.blurb || '').trim(), active: d.active !== false };
+  }
+
+  function saveTeam(id) {
+    var p = state.team.filter(function (x) { return x.id === id; })[0];
+    var d = cleanDraft(state.drafts[id] || {});
+    if (!d.name) { state.teamMsg[id] = { err: true, text: 'Please enter a name.' }; render(); return; }
+    if (!d.active && state.team.filter(function (x) { return x.active && x.id !== id; }).length === 0) {
+      state.teamMsg[id] = { err: true, text: 'At least one provider has to stay on the booking page.' }; render(); return;
+    }
+    state.teamMsg[id] = { text: 'Saving…' }; render();
+    API.saveProvider(Object.assign({}, p, d), false).then(function () {
+      delete state.drafts[id];
+      state.teamMsg[id] = { text: 'Saved. Clients see the change next time they open the booking page.' };
+      return Promise.all([loadTeam(), load()]);
+    }, function () { state.teamMsg[id] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
+  }
+
+  function addTeam() {
+    var d = cleanDraft(state.drafts['new'] || {});
+    if (!d.name) { state.teamMsg['new'] = { err: true, text: 'Please enter a name.' }; render(); return; }
+    var max = state.team.reduce(function (m, p) { var n = +(/^p(\d+)$/.exec(p.id) || [0, 0])[1]; return Math.max(m, n); }, 0);
+    var sort = state.team.reduce(function (m, p) { return Math.max(m, p.sort); }, -1) + 1;
+    var rec = Object.assign({ id: 'p' + (max + 1), sort: sort }, d, { active: true });
+    state.teamMsg['new'] = { text: 'Adding…' }; render();
+    API.saveProvider(rec, true).then(function () {
+      delete state.drafts['new'];
+      state.teamMsg['new'] = { text: rec.name + ' added to the booking page.' };
+      return Promise.all([loadTeam(), load()]);
+    }, function () { state.teamMsg['new'] = { err: true, text: 'Couldn’t add. Check your connection and try again.' }; render(); });
+  }
+
+  function moveTeam(id, dir) {
+    var list = state.team.slice();
+    var i = list.map(function (p) { return p.id; }).indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) { return; }
+    var tmp = list[i]; list[i] = list[j]; list[j] = tmp;
+    state.team = list; render();
+    // renumber everyone so the order is unambiguous, saving only rows that changed
+    var saves = [];
+    list.forEach(function (p, k) { if (p.sort !== k) { saves.push(API.saveProvider(Object.assign({}, p, { sort: k }), false)); } });
+    Promise.all(saves).then(function () { return Promise.all([loadTeam(), load()]); }, function () { loadTeam(); });
+  }
+
   // ---------- sign-in ----------
   function viewAuth() {
     if (state.auth === 'checking') { return '<p class="muted center pad" role="status">Checking sign-in…</p>'; }
@@ -260,7 +359,10 @@ window.BuffAPI.ready.then(function () {
       state.auth = !s ? 'signin' : s.role ? 'ok' : 'denied';
       if (s && s.role === 'provider' && s.providerId) { state.form.providerId = s.providerId; }
       render();
-      if (state.auth === 'ok') { return load(); }
+      if (state.auth === 'ok') {
+        if (state.tab === 'team') { loadTeam(); }
+        return load();
+      }
     }, function () { state.auth = 'signin'; state.signInError = 'Couldn’t reach the server. Check your connection.'; render(); });
   }
 
@@ -275,6 +377,7 @@ window.BuffAPI.ready.then(function () {
       $('.proto-note').innerHTML = 'Signed in as ' + esc(state.staff.email) + ' (' + esc(state.staff.role) + ').';
     }
 
+    $('[data-tab="team"]').hidden = !isManager();
     document.querySelectorAll('.s-tab').forEach(function (t) {
       var on = t.getAttribute('data-tab') === state.tab;
       t.classList.toggle('is-on', on);
@@ -290,7 +393,7 @@ window.BuffAPI.ready.then(function () {
     var main = $('#s-main');
     var sched = $('.s-sched');
     var keep = { top: sched ? sched.scrollTop : null, left: sched ? sched.scrollLeft : 0 };
-    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff }[state.tab]();
+    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam }[state.tab]();
     sched = $('.s-sched');
     if (sched) {
       if (keep.top !== null) { sched.scrollTop = keep.top; sched.scrollLeft = keep.left; }
@@ -307,6 +410,7 @@ window.BuffAPI.ready.then(function () {
 
   function setTab(tab) {
     state.tab = tab;
+    if (tab === 'team' && !state.team) { loadTeam(); }
     try { history.replaceState(null, '', '#' + tab); } catch (e) { /* file:// in some browsers */ }
     render();
     var h = $('#s-main h1');
@@ -343,6 +447,10 @@ window.BuffAPI.ready.then(function () {
       el.disabled = true;
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
+    else if (act === 'tm-save') { saveTeam(el.getAttribute('data-id')); }
+    else if (act === 'tm-undo') { var uid = el.getAttribute('data-id'); delete state.drafts[uid]; delete state.teamMsg[uid]; render(); }
+    else if (act === 'tm-add') { addTeam(); }
+    else if (act === 'tm-move') { moveTeam(el.getAttribute('data-id'), +v); }
     else if (act === 'auth-retry') { state.auth = 'signin'; render(); }
     else if (act === 'signout') { API.signOut().then(function () { state.staff = null; state.auth = 'signin'; render(); }); }
     else if (act === 'reset') {
@@ -359,6 +467,18 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('change', onFormInput);
   function onFormInput(e) {
     var t = e.target;
+    var tid = t.getAttribute && t.getAttribute('data-team');
+    if (tid) {
+      var base = tid === 'new' ? { name: '', initials: '', blurb: '', active: true } : draftFor(state.team.filter(function (x) { return x.id === tid; })[0]);
+      var d = state.drafts[tid] = Object.assign({}, base, state.drafts[tid]);
+      d[t.name] = t.type === 'checkbox' ? t.checked : t.value;
+      delete state.teamMsg[tid];
+      // redraw only on checkbox / blur-style changes so typing isn't interrupted;
+      // otherwise just enable this card's Save button
+      if (e.type === 'change' && t.type === 'checkbox') { render(); }
+      else { var card = t.closest('li, .card'); var btn = card && card.querySelector('[data-act="tm-save"]'); if (btn) { btn.disabled = false; } }
+      return;
+    }
     if (!t.form || t.form.id !== 'to-form' || !t.name) { return; }
     if (t.name === 'allDay') {
       state.form.allDay = t.checked;
@@ -400,7 +520,7 @@ window.BuffAPI.ready.then(function () {
 
   function tabFromHash() {
     var t = (location.hash || '').slice(1);
-    return ['schedule', 'waitlist', 'timeoff'].indexOf(t) >= 0 ? t : null;
+    return ['schedule', 'waitlist', 'timeoff', 'team'].indexOf(t) >= 0 ? t : null;
   }
   window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab && state.auth === 'ok') { setTab(t); load(); } });
 
