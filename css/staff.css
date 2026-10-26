@@ -209,7 +209,7 @@
 .s-sp-note { color: #6B3A1F; font-weight: 600; }
 .flabel { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .s-photo { gap: 8px; }
-.s-photo-btn { cursor: pointer; position: relative; }
+.s-photo-btn { cursor: pointer; position: relative; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; }
 .s-photo-btn:focus-within { outline: 2px solid var(--slate); outline-offset: 2px; }
 .s-ig-in { display: flex; align-items: center; gap: 6px; }
 .s-ig-in span { font-weight: 600; color: var(--slate); }
