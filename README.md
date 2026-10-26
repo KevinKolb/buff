@@ -49,6 +49,7 @@ There's no login yet, so don't share the link widely.
 | `manage.html`, `js/manage.js` | Client lookup and cancel |
 | `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off |
 | `assets/buff-logo.png` | Logo, taken from a screenshot of buffbeautybar.com |
+| `assets/og-image.png`, `assets/*icon*`, `favicon.ico`, `*.webmanifest` | Link-preview image, browser and home-screen icons (blush background so they read in dark mode). Share tags use absolute URLs for `kevinkolb.github.io/buff/`: update them if the site moves to its own domain |
 
 ## Status and next steps
 
