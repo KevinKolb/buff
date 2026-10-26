@@ -106,7 +106,7 @@ window.BuffAPI.ready.then(function () {
 
   function render() {
     var views = { checking: function () { return '<p class="muted center pad" role="status">Loading…</p>'; }, signin: viewSignIn, sent: viewSent, account: viewAccount };
-    $('#main').innerHTML = views[state.view]();
+    $('#main').innerHTML = views[state.view]() + '<nav class="staff-link foot-links" aria-label="More"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="staff.html">Staff</a></nav>';
   }
 
   function show(view) {

@@ -37,7 +37,7 @@ window.BuffAPI.ready.then(function () {
     '<p class="muted sm">Tap <span class="sv-inline-plus" aria-hidden="true">+</span> to book. Prices marked + are starting prices.</p>' +
     sections +
     '<a class="btn-primary as-link" href="index.html">Book online</a>' +
-    '<a class="staff-link" href="staff.html">Staff</a>';
+    '<nav class="staff-link foot-links" aria-label="More"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="staff.html">Staff</a></nav>';
 
   $('#call').href = CFG.business.phoneHref;
   $('#call').setAttribute('aria-label', 'Call ' + CFG.business.name + ' at ' + CFG.business.phone);

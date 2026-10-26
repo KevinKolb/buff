@@ -425,6 +425,7 @@ window.BuffAPI.ready.then(function () {
         '<div class="card-mock" aria-label="Card details (coming soon)">' + icon('card') + '<span>Card number · MM/YY · CVC</span></div>' +
         '<p class="muted xs">Coming soon: online payment connects once our card processor is set up. For now we’ll call you to take payment, and the gift card is good once it’s paid.</p>' +
       '</div>' +
+      '<p class="muted xs center">By buying you agree to our <a href="terms.html" target="_blank" rel="noopener">terms</a> and <a href="privacy.html" target="_blank" rel="noopener">privacy policy</a>.</p>' +
       (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
   }
 
@@ -451,6 +452,7 @@ window.BuffAPI.ready.then(function () {
       '<label class="agree' + (agreeErr ? ' has-err' : '') + '"><input type="checkbox" id="f-agree"' + (state.client.agree ? ' checked' : '') + '>' +
         '<span>I agree to the <a href="' + CFG.business.cancellationPolicyUrl + '" target="_blank" rel="noopener">cancellation policy</a>. Cancellations within ' + CFG.business.cancellationWindowHours + ' hours or no-shows may be charged.</span></label>' +
       (agreeErr ? '<span class="err">' + esc(agreeErr) + '</span>' : '') +
+      '<p class="muted xs center">By booking you agree to our <a href="terms.html" target="_blank" rel="noopener">terms</a> and <a href="privacy.html" target="_blank" rel="noopener">privacy policy</a>.</p>' +
       (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
   }
 
@@ -532,7 +534,7 @@ window.BuffAPI.ready.then(function () {
     // keep horizontal strips (days, categories) and the page where they were across re-renders
     var main = $('#main');
     var keep = { top: main.scrollTop, days: ($('.days') || {}).scrollLeft || 0, chips: ($('.chips') || {}).scrollLeft || 0 };
-    main.innerHTML = views[s - 1]() + '<a class="staff-link" href="staff.html">Staff</a>';
+    main.innerHTML = views[s - 1]() + '<nav class="staff-link foot-links" aria-label="More"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="staff.html">Staff</a></nav>';
     main.scrollTop = keep.top;
     if ($('.days')) { $('.days').scrollLeft = keep.days; }
     if ($('.chips')) { $('.chips').scrollLeft = keep.chips; }

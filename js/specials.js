@@ -36,7 +36,7 @@ window.BuffAPI.ready.then(function () {
         '<p class="muted xs center">Special prices show when you pick a time. If more than one deal fits, you get the best price.</p>'
       : '<div class="card pad"><p class="center">No specials right now. Check back soon.</p></div>') +
     '<a class="btn-primary as-link" href="index.html">Book online</a>' +
-    '<a class="staff-link" href="staff.html">Staff</a>';
+    '<nav class="staff-link foot-links" aria-label="More"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="staff.html">Staff</a></nav>';
 
   $('#call').href = CFG.business.phoneHref;
   $('#call').setAttribute('aria-label', 'Call ' + CFG.business.name + ' at ' + CFG.business.phone);

@@ -52,6 +52,7 @@ There's no login yet, so don't share the link widely.
 | `book.html`, `js/book.js` | Staff booking for phone and walk-in clients, with the day's schedule alongside |
 | `account.html`, `js/account.js` | Client sign-in: upcoming and past visits, cancel, update name and mobile |
 | `services.html`, `js/services.js` | Services, descriptions and prices by category; + starts booking with that service picked |
+| `privacy.html`, `terms.html`, `js/doc.js` | Privacy policy and terms of use (text in the pages; doc.js fills in the business details). Linked at the bottom of every client page and from booking. Update them when card payments, texts or emails go live |
 | `giftcard.html`, `js/giftcard.js` | A gift card to show or print (opened from the gift link) |
 | `specials.html`, `js/specials.js`, `js/pricing.js` | Specials page; pricing.js works out special prices for display (the database decides the booked price) |
 | `assets/buff-logo.png` | Logo, taken from a screenshot of buffbeautybar.com |

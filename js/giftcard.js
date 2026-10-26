@@ -12,7 +12,7 @@ window.BuffAPI.ready.then(function () {
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function money(n) { n = +n; return '$' + (Math.round(n * 100) % 100 ? n.toFixed(2) : String(Math.round(n))); }
 
-  function show(html) { $('#main').innerHTML = html + '<a class="staff-link no-print" href="staff.html">Staff</a>'; }
+  function show(html) { $('#main').innerHTML = html + '<nav class="staff-link foot-links no-print" aria-label="More"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="staff.html">Staff</a></nav>'; }
 
   function card(g) {
     var b = CFG.business, what = g.services.join(' + ') + (g.guests > 1 ? ' for ' + g.guests : '');

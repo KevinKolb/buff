@@ -35,7 +35,7 @@ window.BuffLegal = [
     { when: 'later', title: 'Reviews and testimonials', why: 'Rules prohibit fake reviews and paying for reviews without disclosure.', todo: 'Only post real reviews, with permission.' },
   ] },
   { cat: 'Client privacy and data', items: [
-    { when: 'launch', title: 'Privacy policy', why: 'The site collects names, phone numbers, emails, notes and visit history. Clients should be told what’s collected and why.', todo: 'Post a privacy policy and link it from the booking page.' },
+    { when: 'launch', title: 'Privacy policy', why: 'The site collects names, phone numbers, emails, notes and visit history. Clients should be told what’s collected and why.', todo: 'Done: privacy.html, linked at the bottom of every page and from the booking page. Have a lawyer review it before launch.' },
     { when: 'launch', title: 'Who can see client data', why: 'Staff logins can see client details.', todo: 'Give each person the smallest role they need, remove logins when staff leave, and turn on Supabase’s security advisor before launch.' },
     { when: 'launch', title: 'Data breaches', why: 'Louisiana law requires notifying people if their personal information is exposed.', todo: 'Know who to call (lawyer, insurer) and keep backups. Consider cyber insurance.' },
     { when: 'later', title: 'Staff notes and client ratings', why: 'Notes about clients could be seen by the client if they ask for their records, or come up in a dispute.', todo: 'Keep notes factual and professional. Applies to the planned provider-rates-client feature too.' },
@@ -48,7 +48,7 @@ window.BuffLegal = [
   ] },
   { cat: 'Website and accessibility', items: [
     { when: 'launch', title: 'Accessible booking', why: 'Businesses open to the public can face ADA claims if clients with disabilities can’t book online.', todo: 'The site is built for screen readers and large text; keep testing new features that way.' },
-    { when: 'launch', title: 'Terms of use', why: 'Sets the rules for using the site and booking.', todo: 'Post terms alongside the privacy policy.' },
+    { when: 'launch', title: 'Terms of use', why: 'Sets the rules for using the site and booking.', todo: 'Done: terms.html, linked beside the privacy policy. Have a lawyer review it before launch, and update it when card payments, texts or emails go live.' },
     { when: 'launch', title: 'Logo and photos', why: 'Images need permission from whoever owns them. The logo was copied from a screenshot of the current website.', todo: 'Get the original logo file from its designer. Get written permission before posting photos of clients or staff.' },
   ] },
   { cat: 'Staff and providers', items: [
