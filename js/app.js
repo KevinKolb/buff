@@ -85,8 +85,8 @@ window.BuffAPI.ready.then(function () {
     return c.length === 1 ? c : [];
   }
   function wherePossible() { return !isGift() && candidatePlaces().length > 1; }
-  /** Step 4 (Where) is needed when the picked time is open at more than one place. */
-  function needsWhere() { return !isGift() && !state.waitlist && !!state.slot && slotPlaces(state.slot).length > 1; }
+  /** Step 4 (Where): always for a booked time, unless places aren't set up (then there's nothing to show). */
+  function needsWhere() { return !isGift() && !state.waitlist && !!state.slot && slotPlaces(state.slot).length > 0; }
   /** The place for this visit: the only one that fits, or the one picked on step 4; null if still to pick. */
   function placeId() {
     if (state.slot && !state.waitlist) {
@@ -385,7 +385,7 @@ window.BuffAPI.ready.then(function () {
   function viewWhere() {
     var sp = slotPlaces(state.slot), here = placeId();
     var rows = sp.map(function (id) {
-      var pl = PL.byId(id), on = sameId(here, id);
+      var pl = PL.byId(id), on = sameId(here, id) || sp.length === 1;
       var who = state.provider === 'any' ? ((state.slot.byPlace || {})[id] || []).map(providerName).join(', ') : '';
       return '<li><button class="pro' + (on ? ' is-on' : '') + '" data-act="where" data-v="' + esc(id) + '" aria-pressed="' + on + '">' +
         '<span class="avatar">' + icon('pin') + '</span>' +
@@ -393,9 +393,11 @@ window.BuffAPI.ready.then(function () {
           (who ? '<span class="muted xs">With ' + esc(who) + '</span>' : '') + '</span>' +
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
     }).join('');
-    return '<h1 class="h1">Where would you like to go?</h1>' +
-      '<p class="muted sm">' + esc(longDate(state.date)) + ' at ' + esc(state.slot.label) + ' is open at ' + (sp.length === 2 ? 'both' : 'these') + ' places.</p>' +
-      '<ul class="stack">' + rows + '</ul>' + (here != null ? holdNote() || '' : '');
+    return '<h1 class="h1">' + (sp.length > 1 ? 'Where would you like to go?' : 'Where you’re going') + '</h1>' +
+      '<p class="muted sm">' + esc(longDate(state.date)) + ' at ' + esc(state.slot.label) +
+        (sp.length > 1 ? ' is open at ' + (sp.length === 2 ? 'both' : 'these') + ' places. Pick one.' : '. Your visit is here:') + '</p>' +
+      '<ul class="stack">' + rows + '</ul>' +
+      (here != null ? '<a class="link sm" href="https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(PL.byId(here).name + ', ' + PL.byId(here).address) + '" target="_blank" rel="noopener">Directions</a>' + (holdNote() || '') : '');
   }
 
   function viewTime() {
@@ -619,8 +621,7 @@ window.BuffAPI.ready.then(function () {
     var prog = $('#progress');
     prog.hidden = s >= 6;
     if (s < 6) {
-      // 5 steps when Where may be asked, otherwise 4 (Where is skipped)
-      var of = wherePossible() || needsWhere() ? 5 : 4, n = of === 4 && s === 5 ? 4 : s;
+      var of = 5, n = s;
       $('#step-label').textContent = s === 5 && isGift() ? 'Gift card' : STEP_LABELS[s - 1];
       $('#step-count').textContent = 'Step ' + n + ' of ' + of;
       $('#bar-fill').style.width = (n / of * 100) + '%';
@@ -740,7 +741,7 @@ window.BuffAPI.ready.then(function () {
     if (s > 1 && !state.selected.length) { s = 1; }
     if (isGift() && (s === 3 || s === 4)) { s = state.step === 5 ? 2 : 5; } // gift cards skip the date, time and place
     if (s > 3 && !state.slot && !state.waitlist && !isGift()) { s = 3; }
-    if (s === 4 && !needsWhere()) { s = state.step >= 5 ? 3 : 5; }            // only one place: no Where step
+    if (s === 4 && !needsWhere()) { s = state.step >= 5 ? 3 : 5; }            // waitlist (or no places set up): no Where step
     if (s === 5 && needsWhere() && placeId() == null) { s = 4; }
     if (asked === state.step && s > 1) { history.back(); return; } // duplicate entry (e.g. after "time was taken")
     if (s !== asked) { try { history.replaceState({ buffStep: s }, ''); } catch (err) { /* ignore */ } }
