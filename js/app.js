@@ -367,7 +367,7 @@ window.BuffAPI.ready.then(function () {
       var ig = p.instagram ? '<a class="pro-ig" href="https://www.instagram.com/' + encodeURIComponent(p.instagram) + '/" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on Instagram (@' + esc(p.instagram) + ')">' + IG_ICON + '</a>' : '';
       return '<li class="pro-li"><button class="pro' + (on ? ' is-on' : '') + (ig ? ' has-ig' : '') + '" data-act="pro" data-v="' + p.id + '" aria-pressed="' + on + '">' +
         (p.id === 'any' ? '<span class="avatar">' + icon('star') + '</span>' : avatar(p)) +
-        '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + price + '</span>' + (at ? '<span class="muted xs">At ' + esc(at) + '</span>' : '') + '</span>' +
+        '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.id === 'any' ? p.blurb : API.blurbFor(p.id)) + price + '</span>' + (at ? '<span class="muted xs">At ' + esc(at) + '</span>' : '') + '</span>' +
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button>' + ig + '</li>';
     }).join('');
     var hidden = CFG.providers.length - qualifiedPros().length;

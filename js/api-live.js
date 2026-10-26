@@ -194,6 +194,7 @@
     formatTime: mock.formatTime,
     toMin: mock.toMin,
     canDo: mock.canDo,
+    blurbFor: mock.blurbFor,
 
     // ======== client booking ========
     getAvailability: availability,

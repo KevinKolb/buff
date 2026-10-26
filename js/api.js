@@ -225,6 +225,8 @@
 
     /** Is this provider set up for every one of these services? */
     canDo: function (providerId, services) { return canDo(providerId, services); },
+    /** The line under a provider's name: the categories of the services they do ("Hair · Makeup"), in menu order. */
+    blurbFor: function (providerId) { return blurbFor(providerId); },
 
     /**
      * Creates a booking. Rejects with code 'taken' if the slot filled up meanwhile.
@@ -718,6 +720,14 @@
     allServices().forEach(function (s) { byId[s.id] = s.name; });
     Object.keys(pp).forEach(function (pid) { out[pid] = {}; Object.keys(pp[pid]).forEach(function (id) { if (byId[id]) { out[pid][byId[id]] = pp[pid][id]; } }); });
     return out;
+  }
+  function blurbFor(pid) {
+    var names = CFG.qualified ? CFG.qualified[pid] : null;
+    if (!names) { var p = CFG.providers.filter(function (x) { return x.id === pid; })[0]; return p ? p.blurb || '' : ''; } // before who-does-what existed
+    var cats = [], order = CFG.categoryOrder || [];
+    CFG.services.forEach(function (s) { if (names.indexOf(s.name) >= 0 && cats.indexOf(s.cat) < 0) { cats.push(s.cat); } });
+    function rank(c) { var i = order.indexOf(c); return i < 0 ? order.length : i; }
+    return cats.sort(function (a, b) { return rank(a) - rank(b); }).join(' · ');
   }
   function canDo(providerId, services) {
     if (!services || !services.length || !CFG.qualified) { return true; }

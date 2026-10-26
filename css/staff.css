@@ -269,3 +269,4 @@
 .xp-price.is-up::before { content: '▲'; font-size: 8px; margin-right: 1px; }
 .xp-price.is-down { color: #2F6B3B; }
 .xp-price.is-down::before { content: '▼'; font-size: 8px; margin-right: 1px; }
+.s-ini { max-width: 120px; }

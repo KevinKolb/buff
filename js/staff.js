@@ -438,10 +438,7 @@ window.BuffAPI.ready.then(function () {
 
   function teamFields(id, d) {
     return '<div class="field"><label for="tm-name-' + id + '">Name</label><input id="tm-name-' + id + '" data-team="' + id + '" name="name" type="text" maxlength="40" autocomplete="off" value="' + esc(d.name) + '"></div>' +
-      '<div class="row-2 s-team-row">' +
-        '<div class="field"><label for="tm-ini-' + id + '">Initials</label><input id="tm-ini-' + id + '" data-team="' + id + '" name="initials" type="text" maxlength="3" autocomplete="off" autocapitalize="characters" value="' + esc(d.initials) + '"></div>' +
-        '<div class="field"><label for="tm-blurb-' + id + '">Shown under name</label><input id="tm-blurb-' + id + '" data-team="' + id + '" name="blurb" type="text" maxlength="60" autocomplete="off" placeholder="Hair · Makeup" value="' + esc(d.blurb) + '"></div>' +
-      '</div>' +
+      '<div class="field s-ini"><label for="tm-ini-' + id + '">Initials</label><input id="tm-ini-' + id + '" data-team="' + id + '" name="initials" type="text" maxlength="3" autocomplete="off" autocapitalize="characters" value="' + esc(d.initials) + '"></div>' +
       '<div class="field"><label for="tm-ig-' + id + '">Instagram <span class="muted xs">(optional)</span></label><div class="s-ig-in"><span aria-hidden="true">@</span><input id="tm-ig-' + id + '" data-team="' + id + '" name="instagram" type="text" maxlength="60" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="handle" value="' + esc(d.instagram || '') + '"></div></div>';
   }
 
@@ -454,7 +451,9 @@ window.BuffAPI.ready.then(function () {
       var msg = state.teamMsg[p.id];
       return '<li class="card s-wl' + (p.active ? '' : ' is-hidden-pro') + '">' +
         '<div class="row-between"><div class="row-wrap">' + avatar({ photo: p.photo, initials: d.initials || '?' }) +
-          '<div><div class="b">' + esc(d.name || 'Unnamed') + '</div><div class="muted xs">' + (p.active ? 'On the booking page' : 'Hidden from booking') + '</div></div></div>' +
+          '<div><div class="b">' + esc(d.name || 'Unnamed') + '</div>' +
+            '<div class="muted xs">' + (API.blurbFor(p.id) ? esc(API.blurbFor(p.id)) : '<span class="s-warn">No services yet</span>') + '</div>' +
+            '<div class="muted xs">' + (p.active ? 'On the booking page' : 'Hidden from booking') + '</div></div></div>' +
           '<div class="row-wrap s-move">' +
             '<button class="round" data-act="tm-move" data-v="-1" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
             '<button class="round" data-act="tm-move" data-v="1" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' down"' + (i === state.team.length - 1 ? ' disabled' : '') + '>↓</button>' +
@@ -476,7 +475,7 @@ window.BuffAPI.ready.then(function () {
       (nmsg ? '<p class="' + (nmsg.err ? 'notice' : 'muted sm') + '" role="status">' + esc(nmsg.text) + '</p>' : '') +
       '<button class="btn-primary" data-act="tm-add">Add provider</button></div>';
     return '<h1 class="h1">Team</h1>' +
-      '<p class="muted sm">Names and descriptions show on the booking page and the schedule. Hide someone who has left instead of deleting them, so their past bookings keep their name.</p>' +
+      '<p class="muted sm">Names show on the booking page and the schedule. The line under each name lists the categories of the services they do, and updates when you change their services. Hide someone who has left instead of deleting them, so their past bookings keep their name.</p>' +
       '<div class="s-two"><section class="s-lists"><ul class="stack">' + cards + '</ul></section><section class="s-lists">' + add + viewStaffLogins() + '</section></div>';
   }
 
@@ -490,7 +489,7 @@ window.BuffAPI.ready.then(function () {
     var name = String(d.name || '').trim().replace(/\s+/g, ' ');
     var initials = String(d.initials || '').trim().toUpperCase();
     if (!initials) { initials = name.split(' ').map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase(); }
-    return { name: name, initials: initials, blurb: String(d.blurb || '').trim(), instagram: igHandle(d.instagram), active: d.active !== false };
+    return { name: name, initials: initials, instagram: igHandle(d.instagram), active: d.active !== false };
   }
 
   function saveTeam(id) {
