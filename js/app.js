@@ -241,7 +241,7 @@ window.BuffAPI.ready.then(function () {
       (comboProblem() ? '<p class="notice" role="alert">' + esc(comboProblem()) + '</p>' : '') +
       '<div class="chips" role="toolbar" aria-label="Service categories">' + chips + '</div>' +
       '<ul class="card list" aria-label="' + esc(state.cat) + ' services">' + rows + '</ul>' +
-      '<p class="muted sm center">Nail art, extra styling time or something not listed? Add a note at checkout.</p>' +
+      '<p class="muted sm center">Extra styling time or something not listed? Add a note at checkout.</p>' +
       (state.account
         ? '<a class="link center" href="account.html">My account and visits</a>'
         : '<a class="link center" href="account.html">Sign in to see your visits</a>' +
@@ -359,7 +359,7 @@ window.BuffAPI.ready.then(function () {
           ? '<div class="field"><label>Email</label><div class="a-email">' + esc(state.account.email) + '</div>' +
               '<span class="muted xs">Signed in. <a href="account.html">Not you?</a></span></div>'
           : field('email', 'Email', 'email', 'email', 'you@email.com', '<a href="account.html">Have an account? Sign in</a> to fill this in next time.')) +
-        field('note', 'Note (optional)', 'text', '', 'Nail art idea, guest names…') +
+        field('note', 'Note (optional)', 'text', '', 'Requests, guest names…') +
       '</form>' +
       (state.waitlist ? '' :
       '<div class="card form">' +

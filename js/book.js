@@ -251,7 +251,7 @@ window.BuffAPI.ready.then(function () {
         field('name', 'Name', 'text', 'First and last') +
         field('phone', 'Mobile', 'tel', '(504) 555-0123') +
         field('email', 'Email', 'email', 'client@email.com', 'For their confirmation') +
-        field('note', 'Note for this visit (optional)', 'text', 'Nail art idea, guest names…') +
+        field('note', 'Note for this visit (optional)', 'text', 'Requests, guest names…') +
         '<div class="field"><label for="bk-staffNote">Client notes (staff only)</label>' +
           '<textarea id="bk-staffNote" name="staffNote" rows="2" placeholder="Allergies, preferences… Saved on their record, never shown to the client.">' + esc(state.client.staffNote) + '</textarea></div>' +
       '</form>' +
