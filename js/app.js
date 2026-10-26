@@ -397,7 +397,26 @@ window.BuffAPI.ready.then(function () {
       '<p class="muted sm">' + esc(longDate(state.date)) + ' at ' + esc(state.slot.label) +
         (sp.length > 1 ? ' is open at ' + (sp.length === 2 ? 'both' : 'these') + ' places. Pick one.' : '. Your visit is here:') + '</p>' +
       '<ul class="stack">' + rows + '</ul>' +
-      (here != null ? '<a class="link sm" href="https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(PL.byId(here).name + ', ' + PL.byId(here).address) + '" target="_blank" rel="noopener">Directions</a>' + (holdNote() || '') : '');
+      (here != null ? '<button class="link sm" data-act="map" data-v="' + esc(here) + '">Map and directions</button>' + (holdNote() || '') : '');
+  }
+
+  // Map and directions in a popup, so the booking page stays put.
+  var mapDlg = document.createElement('dialog');
+  mapDlg.className = 'hold-dialog map-dialog';
+  mapDlg.setAttribute('aria-labelledby', 'map-title');
+  document.body.appendChild(mapDlg);
+  mapDlg.addEventListener('click', function (e) { if (e.target === mapDlg) { mapDlg.close(); } });
+  mapDlg.addEventListener('close', function () { mapDlg.innerHTML = ''; }); // stop the map loading in the background
+  function showMap(pl) {
+    if (!pl) { return; }
+    var q = encodeURIComponent(pl.name + ', ' + pl.address);
+    mapDlg.innerHTML = '<h2 id="map-title" class="h1">' + esc(pl.name) + '</h2><p>' + esc(pl.address) + '</p>' +
+      '<iframe class="map-frame" title="Map of ' + esc(pl.name) + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps?q=' + q + '&output=embed"></iframe>' +
+      '<div class="hold-actions">' +
+        '<a class="btn-outline as-link" href="https://www.google.com/maps/dir/?api=1&destination=' + q + '" target="_blank" rel="noopener">Directions in Google Maps</a>' +
+        '<a class="btn-outline as-link" href="https://maps.apple.com/?daddr=' + encodeURIComponent(pl.address) + '&q=' + encodeURIComponent(pl.name) + '" target="_blank" rel="noopener">Directions in Apple Maps</a>' +
+        '<button class="btn-primary" data-act="map-close">Back to booking</button></div>';
+    mapDlg.showModal();
   }
 
   function viewTime() {
@@ -678,6 +697,8 @@ window.BuffAPI.ready.then(function () {
       if (!hasHold() || !sameId(state.hold.place, np)) { holdSlot(state.slot); }
       render();
     }
+    else if (act === 'map') { showMap(PL.byId(v)); }
+    else if (act === 'map-close') { mapDlg.close(); }
     else if (act === 'date') { state.date = v; state.notice = null; loadSlots(); }
     else if (act === 'slot') {
       state.slot = state.slots.slots.filter(function (x) { return x.time === v; })[0];
