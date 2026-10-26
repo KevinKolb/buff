@@ -62,8 +62,9 @@
     return unwrap(res);
   }
 
-  function availability(dateISO, mins, providerId, guests, services) {
+  function availability(dateISO, mins, providerId, guests, services, holdToken) {
     var args = { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests };
+    if (holdToken) { args.p_hold_token = holdToken; } // only sent while a hold exists, so older databases still work
     // only once the provider-services table exists (older databases don't take this)
     if (services && services.length && CFG.qualified) { args.p_services = services; }
     return sb.rpc('get_availability', args).then(unwrap).then(function (res) {
@@ -190,6 +191,31 @@
         return rows.map(function (c) { return { id: c.id, name: c.name, phone: c.phone, email: c.email, staffNote: c.staff_note }; });
       });
     },
+
+    // ======== holding a time while a client finishes booking ========
+
+    holdSlot: function (h) {
+      return sb.rpc('hold_slot', { p: { holdToken: h.token, date: h.date, time: h.time, provider: h.provider, guests: h.guests, services: h.services } })
+        .then(unwrap).then(function (r) { return { expiresAt: Date.parse(r.expiresAt), providerIds: r.providerIds }; });
+    },
+    releaseHold: function (token) { return sb.rpc('release_hold', { p_token: token }).then(unwrap); },
+    /** Best-effort release while the page is closing: keepalive lets the request finish after the page is gone. */
+    releaseHoldOnExit: function (token) {
+      try {
+        fetch(be.supabaseUrl + '/rest/v1/rpc/release_hold', {
+          method: 'POST', keepalive: true,
+          headers: { 'Content-Type': 'application/json', apikey: be.supabaseKey },
+          body: JSON.stringify({ p_token: token }),
+        });
+      } catch (e) { /* the hold expires on its own */ }
+    },
+    listHolds: function (dateISO) {
+      return sb.rpc('list_holds', { p_date: dateISO }).then(function (res) {
+        if (res.error) { return []; } // database without holds yet
+        return (res.data || []).map(function (h) { return { id: h.id, start: h.start, mins: h.mins, providerIds: h.providerIds, expiresAt: Date.parse(h.expiresAt) }; });
+      });
+    },
+    staffReleaseHold: function (id) { return sb.rpc('staff_release_hold', { p_id: id }).then(unwrap); },
 
     staffCreateBooking: function (payload) {
       return sb.rpc('staff_create_booking', { p: payload }).then(unwrap).then(toBooking);

@@ -29,6 +29,7 @@ window.BuffAPI.ready.then(function () {
     submitting: false,
     result: null,
     account: null,         // signed-in client: { email, client: { id, name, phone, email } }
+    hold: null,            // time held while booking: { date, time, label, expiresAt }
     notice: null,          // shown on step 3, e.g. when a time was just taken
   };
 
@@ -77,8 +78,120 @@ window.BuffAPI.ready.then(function () {
     if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
   }
 
+  // ---------- holding the picked time ----------
+  // Picking a time holds it for 10 minutes so nobody else (online or at the
+  // front desk) can take it while the client fills in their details. This
+  // browser's random token identifies its own hold.
+  var holdToken = (function () {
+    var t = null;
+    try { t = sessionStorage.getItem('buff-hold'); } catch (e) { /* private mode */ }
+    if (!t) {
+      var a = new Uint8Array(16); crypto.getRandomValues(a);
+      t = 'h' + Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      try { sessionStorage.setItem('buff-hold', t); } catch (e) { /* fine: one token per page load */ }
+    }
+    return t;
+  })();
+  var leaving = false; // set while we navigate away on purpose, so the browser's leave warning stays quiet
+
+  function hasHold() { return !!(state.hold && state.hold.expiresAt > Date.now()); }
+  function clock(ms) { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
+  function holdWhen() { return state.hold ? fromISO(state.hold.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ' at ' + state.hold.label : ''; }
+
+  function dropHold() {
+    if (!state.hold) { return; }
+    state.hold = null;
+    API.releaseHold(holdToken).catch(function () { /* it expires on its own */ });
+  }
+
+  var holdTimer = null;
+  function holdSlot(slot) {
+    var want = { token: holdToken, date: state.date, time: slot.time, provider: state.provider, guests: state.guests, services: state.selected.slice() };
+    API.holdSlot(want).then(function (r) {
+      if (!state.slot || state.slot.time !== want.time || state.date !== want.date) { return; } // they picked something else meanwhile
+      state.hold = { date: want.date, time: want.time, label: slot.label, expiresAt: r.expiresAt };
+      state.slot.providerIds = r.providerIds;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(render, r.expiresAt - Date.now() + 500); // show that the hold ended
+      render();
+    }, function (err) {
+      if (!state.slot || state.slot.time !== want.time) { return; }
+      if (err.code === 'taken') { state.notice = 'Someone just took ' + slot.label + '. Please pick another time.'; loadSlots(); return; }
+      state.hold = null; // holds not available right now: booking still works, just without the hold
+    });
+  }
+
+  function holdNote() {
+    if (hasHold()) {
+      return '<p class="hold-note">' + icon('clock') + '<span>We’re holding <b>' + esc(holdWhen()) + '</b> for you until ' + esc(clock(state.hold.expiresAt)) + '.</span></p>';
+    }
+    if (state.hold) {
+      return '<p class="notice">Your 10-minute hold on ' + esc(holdWhen()) + ' ended. The time may still be free: tap Book now to try, or pick another time.</p>';
+    }
+    return '';
+  }
+
+  // Prompt before calling or leaving while a time is held.
+  var dlg = document.createElement('dialog');
+  dlg.className = 'hold-dialog';
+  dlg.setAttribute('aria-labelledby', 'hold-title');
+  document.body.appendChild(dlg);
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) { dlg.close(); } });
+
+  function askAboutHold(kind, href) {
+    var when = '<b>' + esc(holdWhen()) + '</b>';
+    dlg.innerHTML = kind === 'call'
+      ? '<h2 id="hold-title" class="h1">Calling to book?</h2>' +
+        '<p>You’re holding ' + when + ' while you finish booking online.</p>' +
+        '<p><b>While it’s held, we can’t book that time for you over the phone</b>, even if you call us. Release it first if you’d like us to book it for you.</p>' +
+        '<div class="hold-actions"><button class="btn-primary" data-hold="release">Release my time and call</button>' +
+          '<button class="btn-outline" data-hold="keep">Keep holding it and call</button>' +
+          '<button class="link" data-hold="cancel">Cancel</button></div>'
+      : '<h2 id="hold-title" class="h1">Leave this page?</h2>' +
+        '<p>You’re holding ' + when + ' while you finish booking.</p>' +
+        '<p>If you leave, we’ll release it so the time is free again, for other clients and for our front desk if you call us.</p>' +
+        '<div class="hold-actions"><button class="btn-primary" data-hold="stay">Stay and finish booking</button>' +
+          '<button class="btn-outline" data-hold="release">Release it and leave</button></div>';
+    dlg.onclick = function (e) {
+      var b = e.target.closest('[data-hold]');
+      if (!b) { return; }
+      var choice = b.getAttribute('data-hold');
+      if (choice === 'cancel' || choice === 'stay') { dlg.close(); return; }
+      leaving = true;
+      setTimeout(function () { leaving = false; }, 1500); // a phone call doesn't unload the page
+      if (choice === 'keep') { dlg.close(); location.href = href; return; }
+      b.disabled = true; b.textContent = 'Releasing…';
+      var done = function () { state.hold = null; dlg.close(); render(); location.href = href; };
+      Promise.race([API.releaseHold(holdToken), new Promise(function (r) { setTimeout(r, 2000); })]).then(done, done);
+    };
+    dlg.showModal();
+    var first = dlg.querySelector('[data-hold]'); if (first) { first.focus(); }
+  }
+
+  // Phone button and links to other pages, while a time is held.
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href]');
+    if (!a || !hasHold() || a.target === '_blank') { return; }
+    var href = a.getAttribute('href');
+    if (/^tel:/.test(href)) { e.preventDefault(); askAboutHold('call', href); }
+    else if (!/^(#|mailto:)/.test(href)) { e.preventDefault(); askAboutHold('leave', href); }
+  }, true);
+
+  // Closing the tab or typing another address: the browser's own warning
+  // (sites can't change its wording), and the hold is released on the way out.
+  window.addEventListener('beforeunload', function (e) {
+    if (hasHold() && !leaving) { e.preventDefault(); e.returnValue = ''; }
+  });
+  window.addEventListener('pagehide', function () {
+    if (state.hold) { API.releaseHoldOnExit(holdToken); }
+  });
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted && state.hold) { state.hold = null; state.slot = null; state.slots = null; render(); } // back from another page: the hold was released
+  });
+
   function loadSlots() {
     if (!state.date) { return; }
+    dropHold();
     state.slotsLoading = true; state.slot = null; state.waitlist = false;
     render();
     var t = totals();
@@ -215,7 +328,7 @@ window.BuffAPI.ready.then(function () {
     return '<h1 class="h1">When works for you?</h1>' + notice +
       '<div class="days" role="toolbar" aria-label="Choose a day">' + days.join('') + '</div>' +
       (state.date ? '<div class="label">' + esc(longDate(state.date)) + ' · ' + totals().mins + ' min · ' + esc(providerName(state.provider)) + '</div>' : '') +
-      '<div class="card pad-sm">' + body + '</div>' + wl;
+      '<div class="card pad-sm">' + body + '</div>' + (state.slot ? holdNote() : '') + wl;
   }
 
   function field(id, label, type, ac, ph, hint) {
@@ -238,7 +351,7 @@ window.BuffAPI.ready.then(function () {
 
   function viewDetails() {
     var agreeErr = state.errors.agree;
-    return '<h1 class="h1">Almost done</h1>' + summaryCard() + changeLink +
+    return '<h1 class="h1">Almost done</h1>' + summaryCard() + changeLink + (state.waitlist ? '' : holdNote()) +
       '<form id="details" class="card form" novalidate>' +
         field('name', 'Name', 'text', 'name', 'First and last') +
         field('phone', 'Mobile', 'tel', 'tel', '(504) 555-0123', 'For your confirmation and reminder texts') +
@@ -342,16 +455,18 @@ window.BuffAPI.ready.then(function () {
       var i = state.selected.indexOf(v);
       if (i >= 0) { state.selected.splice(i, 1); } else { state.selected.push(v); }
       if (state.provider !== 'any' && !API.canDo(state.provider, state.selected)) { state.provider = 'any'; } // they don't do the new mix
-      state.slots = null; state.slot = null; render();
+      dropHold(); state.slots = null; state.slot = null; render();
     }
-    else if (act === 'guests') { state.guests = Math.max(1, Math.min(CFG.booking.maxGuests, state.guests + +v)); state.slots = null; state.slot = null; render(); }
-    else if (act === 'pro') { state.provider = v; state.slots = null; state.slot = null; render(); }
+    else if (act === 'guests') { state.guests = Math.max(1, Math.min(CFG.booking.maxGuests, state.guests + +v)); dropHold(); state.slots = null; state.slot = null; render(); }
+    else if (act === 'pro') { if (v !== state.provider) { dropHold(); state.slots = null; state.slot = null; } state.provider = v; render(); }
     else if (act === 'date') { state.date = v; state.notice = null; loadSlots(); }
     else if (act === 'slot') {
       state.slot = state.slots.slots.filter(function (x) { return x.time === v; })[0];
-      state.waitlist = false; state.notice = null; render();
+      state.waitlist = false; state.notice = null;
+      if (!state.hold || state.hold.time !== v || state.hold.date !== state.date || !hasHold()) { holdSlot(state.slot); }
+      render();
     }
-    else if (act === 'waitlist') { state.waitlist = !state.waitlist; if (state.waitlist) { state.slot = null; } render(); }
+    else if (act === 'waitlist') { state.waitlist = !state.waitlist; if (state.waitlist) { state.slot = null; dropHold(); } render(); }
     else if (act === 'restart') {
       restart();
       go(1);
@@ -369,6 +484,7 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('change', function (e) { if (e.target.id === 'f-agree') { state.client.agree = e.target.checked; } });
 
   function restart() {
+    dropHold();
     state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {}; state.notice = null;
     state.client = { name: '', phone: '', email: '', note: '', agree: false };
   }
@@ -425,12 +541,12 @@ window.BuffAPI.ready.then(function () {
     var t = totals();
     var payload = {
       services: state.selected.slice(), guests: state.guests, mins: t.mins, total: t.price,
-      provider: state.provider, date: state.date, policyAgreed: !!state.client.agree,
+      provider: state.provider, date: state.date, policyAgreed: !!state.client.agree, holdToken: state.hold ? holdToken : undefined,
       client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim() },
     };
     var p = state.waitlist ? API.joinWaitlist(payload)
       : API.createBooking(Object.assign(payload, { time: state.slot.time, providerIds: state.slot.providerIds }));
-    p.then(function (res) { state.submitting = false; state.result = res; go(5); }, function (err) {
+    p.then(function (res) { state.submitting = false; state.result = res; state.hold = null; go(5); }, function (err) {
       state.submitting = false;
       if (err.code === 'taken') { state.notice = 'Sorry, that time was just booked. Please pick another.'; go(3, { replace: true }); loadSlots(); return; }
       state.errors = { form: err.code === 'not_qualified' ? 'That provider doesn’t do these services. Go back and pick someone else or First available.' : 'Something went wrong. Please try again or call us.' }; render();

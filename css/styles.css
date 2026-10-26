@@ -192,3 +192,16 @@ a.link { display: flex; align-items: center; justify-content: center; }
   /* confirmation: no summary panel, so center the content */
   .app-book:has(.foot[hidden]) .main { grid-column: 1 / -1; max-width: 640px; margin: 0 auto; width: 100%; }
 }
+
+/* Held time (booking page) */
+.hold-note { display: flex; align-items: flex-start; gap: 8px; background: #EEF2F4; border: 1px solid #C9D3D9; color: var(--slate); border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.45; }
+.hold-note .ico { width: 18px; height: 18px; margin-top: 1px; }
+.hold-dialog { border: none; border-radius: 20px; padding: 24px 22px 20px; width: min(420px, calc(100vw - 32px)); background: var(--cream); color: var(--ink); box-shadow: 0 20px 60px rgba(47, 58, 65, .3); }
+.hold-dialog::backdrop { background: rgba(47, 58, 65, .45); }
+.hold-dialog .h1 { margin: 0 0 10px; font-size: 21px; }
+.hold-dialog p { margin: 0 0 10px; font-size: 15px; }
+.hold-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.hold-actions .btn-primary, .hold-actions .btn-outline { width: 100%; }
+@media (max-width: 559px) {
+  .hold-dialog { margin: auto 0 0; width: 100vw; max-width: 100vw; border-radius: 20px 20px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+}

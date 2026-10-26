@@ -192,3 +192,4 @@
 .s-closed-list li { padding: 8px 0; border-top: 1px solid var(--line-soft); }
 .s-sugg { min-height: 40px; padding: 0 12px; font-size: 12px; letter-spacing: .02em; text-transform: none; }
 .s-closed { margin: 0; }
+.s-hold { position: absolute; left: 4px; right: 4px; border-radius: 8px; border: 2px dashed #C08A5B; background: #FFF4EA; color: #7A4A20; padding: 2px 8px; font-size: 11px; text-align: left; display: flex; flex-direction: column; overflow: hidden; cursor: pointer; z-index: 1; font-family: inherit; }

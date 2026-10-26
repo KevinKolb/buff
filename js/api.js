@@ -9,6 +9,7 @@
 (function () {
   var CFG = window.BUFF_CONFIG;
   var KEY = 'buff-mock-v1';
+  var HOLD_MS = 10 * 60 * 1000; // how long a picked time is held
 
   function toMin(hhmm) { var p = hhmm.split(':'); return +p[0] * 60 + +p[1]; }
   function toHHMM(m) { var h = Math.floor(m / 60), mm = m % 60; return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm; }
@@ -97,13 +98,17 @@
   }
 
   // Busy intervals [start, end) in minutes for one provider on one date.
-  function busyFor(providerId, dateISO) {
-    var busy = [];
+  // holdToken: the caller's own hold doesn't count as busy for them.
+  function busyFor(providerId, dateISO, holdToken) {
+    var busy = [], now = Date.now();
     bookingsOn(dateISO).forEach(function (b) {
       if (b.status !== 'cancelled' && b.providerIds.indexOf(providerId) >= 0) { busy.push([b.start, b.start + b.mins]); }
     });
     db.timeOff.forEach(function (t) {
       if (t.status === 'approved' && t.providerId === providerId && t.date === dateISO) { busy.push([t.start, t.end]); }
+    });
+    (db.holds || []).forEach(function (h) { // someone part-way through booking online
+      if (h.date === dateISO && h.expiresAt > now && h.token !== holdToken && h.providerIds.indexOf(providerId) >= 0) { busy.push([h.start, h.start + h.mins]); }
     });
     return busy;
   }
@@ -113,12 +118,12 @@
     return true;
   }
 
-  function slotsFor(dateISO, mins, providerId, guests, services) {
+  function slotsFor(dateISO, mins, providerId, guests, services, holdToken) {
     var hrs = hoursOn(dateISO);
     if (!hrs) { return { closed: true, slots: [] }; }
     if ((CFG.closedDates || {})[dateISO] != null) { return { closed: true, slots: [], reason: CFG.closedDates[dateISO] }; }
     var busyMap = {};
-    CFG.providers.forEach(function (p) { busyMap[p.id] = busyFor(p.id, dateISO); });
+    CFG.providers.forEach(function (p) { busyMap[p.id] = busyFor(p.id, dateISO, holdToken); });
 
     var now = new Date(), d = new Date(dateISO + 'T00:00:00');
     var isToday = now.toDateString() === d.toDateString();
@@ -158,9 +163,42 @@
      * @param {string[]} [services] service names: only providers set up for all of them
      * @returns {Promise<{closed:boolean, slots:Array<{time:string,label:string,available:boolean,providerIds:string[]}>}>}
      */
-    getAvailability: function (dateISO, mins, providerId, guests, services) {
+    getAvailability: function (dateISO, mins, providerId, guests, services, holdToken) {
       sync();
-      return delay(slotsFor(dateISO, mins, providerId, guests, services));
+      return delay(slotsFor(dateISO, mins, providerId, guests, services, holdToken));
+    },
+
+    // ======== holding a time while a client finishes booking ========
+
+    /** Holds a time for 10 minutes (replacing this visitor's earlier hold). Resolves { expiresAt (ms), providerIds }; rejects 'taken'. */
+    holdSlot: function (h) {
+      sync();
+      var mins = h.services.reduce(function (m, n) { var v = CFG.services.filter(function (x) { return x.name === n; })[0]; return m + (v ? v.mins : 0); }, 0);
+      db.holds = (db.holds || []).filter(function (x) { return x.token !== h.token && x.expiresAt > Date.now() - 864e5; });
+      var slot = slotsFor(h.date, mins, h.provider, h.guests, h.services, h.token).slots.filter(function (s) { return s.time === h.time; })[0];
+      if (!slot || !slot.available) { save(); return fail('taken', 'That time was just taken.'); }
+      var rec = { id: newId('H'), token: h.token, date: h.date, start: toMin(h.time), mins: mins, providerIds: slot.providerIds, expiresAt: Date.now() + HOLD_MS };
+      db.holds.push(rec); save();
+      return delay({ expiresAt: rec.expiresAt, providerIds: rec.providerIds });
+    },
+    releaseHold: function (token) {
+      sync(); var before = (db.holds || []).length;
+      db.holds = (db.holds || []).filter(function (x) { return x.token !== token; }); save();
+      return delay(before - db.holds.length);
+    },
+    /** Best-effort release while the page is closing (no waiting for an answer). */
+    releaseHoldOnExit: function (token) {
+      sync(); db.holds = (db.holds || []).filter(function (x) { return x.token !== token; }); save();
+    },
+    /** Front desk: times being held online on a date, no client details. */
+    listHolds: function (dateISO) {
+      sync();
+      return delay((db.holds || []).filter(function (h) { return h.date === dateISO && h.expiresAt > Date.now(); })
+        .map(function (h) { return { id: h.id, start: h.start, mins: h.mins, providerIds: h.providerIds, expiresAt: h.expiresAt }; }));
+    },
+    staffReleaseHold: function (id) {
+      sync(); db.holds = (db.holds || []).filter(function (x) { return x.id !== id; }); save();
+      return delay(1);
     },
 
     /** Is this provider set up for every one of these services? */
@@ -174,13 +212,15 @@
       sync();
       if (payload.provider && payload.provider !== 'any' && !canDo(payload.provider, payload.services)) { return fail('not_qualified', 'That provider doesn’t do these services.'); }
       var start = toMin(payload.time);
-      var clash = payload.providerIds.some(function (id) { return !isFree(busyFor(id, payload.date), start, start + payload.mins); });
+      var clash = payload.providerIds.some(function (id) { return !isFree(busyFor(id, payload.date, payload.holdToken), start, start + payload.mins); });
       if (clash) { return fail('taken', 'That time was just taken.'); }
       var rec = Object.assign({ id: newId('BB'), createdAt: new Date().toISOString(), status: 'booked' }, clone(payload));
       rec.start = start;
       rec.client.email = String(rec.client.email || '').trim().toLowerCase();
       rec.clientId = clientFor(payload, payload._staff);
       delete rec._staff; delete rec.client.staffNote;
+      delete rec.holdToken;
+      db.holds = (db.holds || []).filter(function (x) { return x.token !== payload.holdToken; }); // the hold became a booking
       db.bookings.push(rec); save();
       return delay(rec);
     },

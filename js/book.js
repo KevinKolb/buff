@@ -59,15 +59,16 @@ window.BuffAPI.ready.then(function () {
     state.selected.forEach(function (n) { var s = svc(n); if (s) { mins += s.mins; price += s.price; } });
     return { mins: mins, price: price * state.guests };
   }
+  function clockAt(ms) { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
   function hasRole(r) { return !!(state.staff && state.staff.roles && state.staff.roles.indexOf(r) >= 0); }
 
   // ---------- data ----------
   function loadDay() {
     var d = state.date;
     state.day = null; state.picked = null; render();
-    return Promise.all([API.listBookings(d), API.timeOffOn(d)]).then(function (r) {
+    return Promise.all([API.listBookings(d), API.timeOffOn(d), API.listHolds(d).catch(function () { return []; })]).then(function (r) {
       if (d !== state.date) { return; }
-      state.day = { bookings: r[0], timeOff: r[1] }; render();
+      state.day = { bookings: r[0], timeOff: r[1], holds: r[2] }; render();
     }, function () {
       if (d !== state.date) { return; }
       state.day = { error: true }; render();
@@ -303,6 +304,10 @@ window.BuffAPI.ready.then(function () {
         blocks += '<button class="s-appt is-' + b.status + (b.sample ? ' is-sample' : '') + (h < 34 ? ' is-short' : '') + '" data-act="pick" data-v="' + esc(b.id) + '" style="top:' + ((b.start - hrs.open) * PX) + 'px;height:' + h + 'px">' +
           '<span class="s-appt-time">' + fmt(b.start) + '</span><span class="s-appt-name">' + esc(b.client.name) + '</span></button>';
       });
+      (state.day.holds || []).filter(function (h) { return h.providerIds.indexOf(p.id) >= 0; }).forEach(function (h) {
+        blocks += '<button class="s-hold" data-act="pick-hold" data-v="' + esc(h.id) + '" style="top:' + ((h.start - hrs.open) * PX) + 'px;height:' + (h.mins * PX - 2) + 'px">' +
+          '<span class="b">Being booked online</span><span>until ' + esc(clockAt(h.expiresAt)) + '</span></button>';
+      });
       if (state.slot && state.slot.providerIds.indexOf(p.id) >= 0) {
         blocks += '<div class="s-ghost" style="top:' + ((ghostStart - hrs.open) * PX) + 'px;height:' + (totals().mins * PX - 2) + 'px"><span class="b">New: ' + esc(state.slot.label) + '</span></div>';
       }
@@ -311,7 +316,13 @@ window.BuffAPI.ready.then(function () {
     }).join('');
 
     var b = state.picked && state.day.bookings.filter(function (x) { return x.id === state.picked; })[0];
-    var info = b
+    var hold = state.picked && (state.day.holds || []).filter(function (x) { return x.id === state.picked; })[0];
+    var info = hold
+      ? '<div class="bk-info"><div class="b">Someone is booking ' + esc(fmt(hold.start)) + ' online</div>' +
+          '<div class="sm">This time is held for them until ' + esc(clockAt(hold.expiresAt)) + ', so nobody else can book it, including you.</div>' +
+          '<div class="muted sm">If that client is on the phone with you now, release it and book it here. Otherwise it frees up on its own.</div>' +
+          '<button class="btn-outline sm" data-act="release-hold" data-v="' + esc(hold.id) + '">Release this hold</button></div>'
+      : b
       ? '<div class="bk-info"><div class="b">' + esc(b.client.name) + '</div>' +
           '<div class="sm">' + fmt(b.start) + '–' + fmt(b.start + b.mins) + ' · ' + esc(b.services.join(', ')) + '</div>' +
           '<div class="muted sm">' + esc(b.providerIds.map(providerName).join(', ')) + (b.client.phone ? ' · <a href="tel:' + esc(b.client.phone.replace(/[^\d+]/g, '')) + '">' + esc(b.client.phone) + '</a>' : '') + '</div>' +
@@ -430,7 +441,12 @@ window.BuffAPI.ready.then(function () {
       state.slot = state.slots.slots.filter(function (x) { return x.time === v; })[0];
       state.notice = ''; state.scrollToSlot = true; render();
     }
-    else if (act === 'pick') { state.picked = state.picked === v ? null : v; render(); }
+    else if (act === 'pick' || act === 'pick-hold') { state.picked = state.picked === v ? null : v; render(); }
+    else if (act === 'release-hold') {
+      el.disabled = true; el.textContent = 'Releasing…';
+      API.staffReleaseHold(v).then(function () { state.picked = null; loadDay(); loadSlots(); },
+        function () { el.disabled = false; el.textContent = 'Couldn’t release. Try again'; });
+    }
     else if (act === 'book') { book(); }
     else if (act === 'pick-client') { pickClient(v); }
     else if (act === 'new-client') {
@@ -481,7 +497,15 @@ window.BuffAPI.ready.then(function () {
     state.staff = s;
     state.auth = !s ? 'signin' : (hasRole('manager') || hasRole('reservationist')) ? 'ok' : 'denied';
     render();
-    if (state.auth === 'ok') { loadDay(); loadClients(); }
+    if (state.auth === 'ok') {
+      loadDay(); loadClients();
+      // holds come and go every few minutes: keep the day and open times current
+      setInterval(function () {
+        if (state.result || document.hidden) { return; }
+        var d = state.date;
+        API.listHolds(d).then(function (hs) { if (state.day && d === state.date && !state.day.error) { state.day.holds = hs; render(); } }, function () {});
+      }, 30000);
+    }
   }, function () {
     state.auth = 'signin'; render();
   });
