@@ -252,16 +252,36 @@ window.BuffAPI.ready.then(function () {
   }
 
   // ---------- team (managers) ----------
+  // Who-does-what needs the provider_services table (20261026000800). If the
+  // database doesn't have it yet, the Team and Menu tabs still work without it.
+  function loadQuals() { return API.listQualifications().catch(function () { return null; }); }
+
   function loadTeam() {
-    return Promise.all([API.listProviders(), API.listStaff(), API.listQualifications(), API.listMenu()]).then(function (r) {
+    state.loadError = null;
+    return Promise.all([API.listProviders(), API.listStaff(), loadQuals(), API.listMenu()]).then(function (r) {
       state.team = r[0]; state.staffList = r[1]; state.quals = r[2]; state.menu = r[3]; render();
-    });
+    }, function (err) { showLoadError('Team', err); });
+  }
+
+  function showLoadError(what, err) {
+    console.error('[Buff] ' + what + ' tab failed to load', err);
+    state.loadError = { tab: what.toLowerCase(), text: (err && (err.message || err.code)) || String(err) };
+    render();
+  }
+  function loadErrorView(tab) {
+    var e = state.loadError;
+    if (!e || e.tab !== tab) { return null; }
+    return '<div class="card form"><p class="notice" role="alert">Couldn’t load this tab. Check your connection and try again.</p>' +
+      '<p class="muted xs">' + esc(e.text) + '</p><button class="btn-outline" data-act="reload-tab">Try again</button></div>';
   }
 
   // ----- which services each provider does -----
-  function qualDraft(pid) { return state.qdrafts[pid] || (state.quals[pid] || []).slice(); }
+  function qualDraft(pid) { return state.qdrafts[pid] || ((state.quals || {})[pid] || []).slice(); }
 
   function viewQuals(p) {
+    if (!state.quals) {
+      return '<p class="muted xs s-quals">Choosing which services each provider does needs a database update (20261026000800_provider_services.sql).</p>';
+    }
     var mine = qualDraft(p.id), dirty = !!state.qdrafts[p.id], services = state.menu.services, msg = state.teamMsg['q:' + p.id];
     var cats = state.menu.categories.filter(function (c) { return services.some(function (s) { return s.cat === c; }); });
     var groups = cats.map(function (c) {
@@ -380,7 +400,7 @@ window.BuffAPI.ready.then(function () {
 
   function viewTeam() {
     if (!isManager()) { return '<h1 class="h1">Team</h1><div class="card pad"><p class="center muted">Only managers can edit the team.</p></div>'; }
-    if (!state.team) { return '<h1 class="h1">Team</h1><p class="muted center pad" role="status">Loading…</p>'; }
+    if (!state.team) { return '<h1 class="h1">Team</h1>' + (loadErrorView('team') || '<p class="muted center pad" role="status">Loading…</p>'); }
     var cards = state.team.map(function (p, i) {
       var d = draftFor(p);
       var dirty = !!state.drafts[p.id];
@@ -460,7 +480,9 @@ window.BuffAPI.ready.then(function () {
 
   // ---------- menu (managers) ----------
   function loadMenu() {
-    return Promise.all([API.listMenu(), API.listQualifications()]).then(function (r) { state.menu = r[0]; state.quals = r[1]; render(); });
+    state.loadError = null;
+    return Promise.all([API.listMenu(), loadQuals()]).then(function (r) { state.menu = r[0]; state.quals = r[1]; render(); },
+      function (err) { showLoadError('Menu', err); });
   }
 
   function svcById(id) { return state.menu.services.filter(function (s) { return String(s.id) === String(id); })[0]; }
@@ -501,7 +523,7 @@ window.BuffAPI.ready.then(function () {
 
   function viewMenu() {
     if (!isManager()) { return '<h1 class="h1">Menu</h1><div class="card pad"><p class="center muted">Only managers can edit the menu.</p></div>'; }
-    if (!state.menu) { return '<h1 class="h1">Menu</h1><p class="muted center pad" role="status">Loading…</p>'; }
+    if (!state.menu) { return '<h1 class="h1">Menu</h1>' + (loadErrorView('menu') || '<p class="muted center pad" role="status">Loading…</p>'); }
     var cats = state.menu.categories;
     if (cats.indexOf(state.menuCat) < 0) { state.menuCat = cats[0] || null; }
     function count(c) { return state.menu.services.filter(function (s) { return s.cat === c; }).length; }
@@ -782,6 +804,7 @@ window.BuffAPI.ready.then(function () {
       el.disabled = true;
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
+    else if (act === 'reload-tab') { state.loadError = null; render(); if (state.tab === 'team') { loadTeam(); } else { loadMenu(); } }
     else if (act === 'q-save') { saveQuals(el.getAttribute('data-id')); }
     else if (act === 'q-undo') { var qid = el.getAttribute('data-id'); delete state.qdrafts[qid]; delete state.teamMsg['q:' + qid]; render(); }
     else if (/^st-/.test(act)) { staffAction(act, el.getAttribute('data-k')); }
