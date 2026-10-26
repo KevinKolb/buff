@@ -244,7 +244,7 @@ window.BuffAPI.ready.then(function () {
     // keep horizontal strips (days, categories) and the page where they were across re-renders
     var main = $('#main');
     var keep = { top: main.scrollTop, days: ($('.days') || {}).scrollLeft || 0, chips: ($('.chips') || {}).scrollLeft || 0 };
-    main.innerHTML = views[s - 1]();
+    main.innerHTML = views[s - 1]() + '<a class="staff-link" href="staff.html">Staff</a>';
     main.scrollTop = keep.top;
     if ($('.days')) { $('.days').scrollLeft = keep.days; }
     if ($('.chips')) { $('.chips').scrollLeft = keep.chips; }

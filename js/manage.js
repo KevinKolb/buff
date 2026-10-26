@@ -80,7 +80,7 @@ window.BuffAPI.ready.then(function () {
 
   function render() {
     var views = { find: viewFind, booking: viewBooking, done: viewDone };
-    $('#main').innerHTML = views[state.view]();
+    $('#main').innerHTML = views[state.view]() + '<a class="staff-link" href="staff.html">Staff</a>';
   }
 
   function show(view) {
