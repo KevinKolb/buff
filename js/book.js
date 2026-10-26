@@ -254,9 +254,9 @@ window.BuffAPI.ready.then(function () {
         '<div class="field"><label for="bk-staffNote">Client notes (staff only)</label>' +
           '<textarea id="bk-staffNote" name="staffNote" rows="2" placeholder="Allergies, preferences… Saved on their record, never shown to the client.">' + esc(state.client.staffNote) + '</textarea></div>' +
       '</form>' +
-      '<div class="bk-card"><div class="row-between"><span class="b sm">Card on file</span><span class="muted xs">Secured by Stripe</span></div>' +
+      '<div class="bk-card"><div class="row-between"><span class="b sm">Card on file</span><span class="muted xs">Encrypted</span></div>' +
         '<div class="card-mock" aria-label="Card details (coming soon)"><span>Card number · MM/YY · CVC</span></div>' +
-        '<p class="muted xs">Card entry connects to Stripe in a later build.</p></div>' +
+        '<p class="muted xs">Card entry connects once the card processor is set up.</p></div>' +
       '<label class="agree' + (policyErr ? ' has-err' : '') + '"><input type="checkbox" id="bk-policy"' + (state.policy ? ' checked' : '') + '>' +
         '<span>I read the <a href="' + CFG.business.cancellationPolicyUrl + '" target="_blank" rel="noopener">cancellation policy</a> to the client and they agreed: cancellations within ' + CFG.business.cancellationWindowHours + ' hours or no-shows may be charged.</span></label>' +
       (policyErr ? '<span class="err">' + esc(policyErr) + '</span>' : '') +

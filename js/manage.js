@@ -126,5 +126,6 @@ window.BuffAPI.ready.then(function () {
 
   $('#call').href = CFG.business.phoneHref;
   $('#call').setAttribute('aria-label', 'Call ' + CFG.business.name + ' at ' + CFG.business.phone);
+  $('.call-num').textContent = CFG.business.phone; // shown beside the icon on wide screens
   render();
 });

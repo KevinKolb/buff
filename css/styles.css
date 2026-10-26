@@ -146,3 +146,49 @@ a.link { display: flex; align-items: center; justify-content: center; }
 .link-inline { border: none; background: none; padding: 0; font: inherit; color: var(--slate); text-decoration: underline; cursor: pointer; }
 .row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .day.is-holiday:disabled { text-decoration: none; opacity: .55; background: repeating-linear-gradient(135deg, #F7EEE8 0 6px, var(--cream) 6px 12px); }
+
+/* ---------- Wide screens (computers, tablets in landscape) ----------
+   Phones keep the single column above. From 900px the booking page puts the
+   steps on the left and "Your visit" beside them, and the page itself scrolls. */
+.foot-detail, .call-num { display: none; }
+@media (min-width: 900px) {
+  html, body { height: auto; }
+  .app { max-width: 1080px; height: auto; min-height: 100dvh; padding: 0 32px 48px; box-shadow: none; }
+  .top { justify-content: flex-start; padding: 20px 0 16px; min-height: 0; }
+  .logo img { height: 72px; }
+  .icon-btn.right { width: auto; padding: 0 14px; gap: 8px; border-radius: 22px; }
+  .call-num { display: inline; font-size: 14px; font-weight: 600; }
+  .icon-btn.left { position: static; transform: none; margin-right: 8px; order: -1; }
+  .main { overflow: visible; padding: 4px 0 24px; }
+  .staff-link { margin-top: 24px; }
+
+  /* manage + account: a comfortable reading column */
+  .app:not(.app-book) .main { max-width: 640px; margin: 0 auto; width: 100%; }
+
+  /* booking: steps | summary */
+  .app-book { display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 40px; align-content: start;
+    grid-template-areas: "top top" "progress aside" "main aside"; }
+  .app-book .top { grid-area: top; }
+  .app-book .progress { grid-area: progress; padding: 0 0 12px; }
+  .app-book .main { grid-area: main; }
+  .app-book .foot { grid-area: aside; align-self: start; position: sticky; top: 24px; flex-direction: column; align-items: stretch;
+    gap: 14px; border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .app-book .foot-detail { display: flex; flex-direction: column; gap: 8px; }
+  .app-book .foot-detail .label { margin: 0; }
+  .app-book .foot-info { flex-direction: row; justify-content: space-between; align-items: baseline; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+  .app-book .foot .btn-primary { width: 100%; }
+  .foot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+
+  /* more room for choices */
+  .app-book .times { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .app-book .card.list { display: grid; grid-template-columns: 1fr 1fr; }
+  .app-book .card.list li + li { border-top: none; }
+  .app-book .card.list li { border-bottom: 1px solid var(--line-soft); }
+  .app-book .card.list li:nth-child(odd) { border-right: 1px solid var(--line-soft); }
+  .app-book .stack:has(.pro) { display: grid; grid-template-columns: 1fr 1fr; }
+  .h1 { font-size: 26px; }
+}
+@media (min-width: 900px) {
+  /* confirmation: no summary panel, so center the content */
+  .app-book:has(.foot[hidden]) .main { grid-column: 1 / -1; max-width: 640px; margin: 0 auto; width: 100%; }
+}

@@ -72,6 +72,7 @@ window.BuffAPI.ready.then(function () {
     render();
     var main = $('#main');
     main.scrollTop = 0;
+    if (window.scrollY) { window.scrollTo(0, 0); } // wide screens scroll the page, not the panel
     var h = main.querySelector('h1');
     if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
   }
@@ -249,9 +250,9 @@ window.BuffAPI.ready.then(function () {
       '</form>' +
       (state.waitlist ? '' :
       '<div class="card form">' +
-        '<div class="row-between"><span class="b sm">Card on file</span><span class="muted xs">Secured by Stripe</span></div>' +
+        '<div class="row-between"><span class="b sm">Card on file</span><span class="muted xs">Encrypted</span></div>' +
         '<div class="card-mock" aria-label="Card details (coming soon)">' + icon('card') + '<span>Card number · MM/YY · CVC</span></div>' +
-        '<p class="muted xs">Prototype: card entry connects to Stripe in the next build. You won’t be charged today.</p>' +
+        '<p class="muted xs">Coming soon: card entry connects once our card processor is set up. You won’t be charged today.</p>' +
       '</div>') +
       '<label class="agree' + (agreeErr ? ' has-err' : '') + '"><input type="checkbox" id="f-agree"' + (state.client.agree ? ' checked' : '') + '>' +
         '<span>I agree to the <a href="' + CFG.business.cancellationPolicyUrl + '" target="_blank" rel="noopener">cancellation policy</a>. Cancellations within ' + CFG.business.cancellationWindowHours + ' hours or no-shows may be charged.</span></label>' +
@@ -265,7 +266,7 @@ window.BuffAPI.ready.then(function () {
     return '<div class="done">' +
       '<div class="done-badge">' + icon('check') + '</div>' +
       '<h1 class="h1 center">' + (wl ? 'You’re on the waitlist' : 'You’re booked!') + '</h1>' +
-      '<p class="center muted">' + (wl ? 'We’ll text you the moment a spot opens. First to claim it gets it.' : 'Confirmation is on its way by text and email. We’ll remind you ' + CFG.business.cancellationWindowHours + ' hours before.') + '</p>' +
+      '<p class="center muted">' + (wl ? 'We’ll contact you if a spot opens. First to claim it gets it.' : 'Save your reference below. Need to change plans? Cancel online or call us.') + '</p>' +
       summaryCard() +
       '<p class="center xs muted">Reference ' + esc(r.id) + ' · ' + esc(CFG.business.name) + ', ' + esc(CFG.business.address) + '</p>' +
       (wl ? '' : '<button class="btn-outline" data-act="ics">Add to calendar</button>') +
@@ -282,6 +283,19 @@ window.BuffAPI.ready.then(function () {
     if (state.step === 3) { return !!state.slot || state.waitlist; }
     if (state.step === 4) { return !state.submitting; }
     return false;
+  }
+
+  // the visit so far, for the summary panel beside the steps on wide screens (hidden on phones)
+  function footDetail() {
+    if (!state.selected.length) { return '<div class="label">Your visit</div><p class="muted sm">Pick a service to start.</p>'; }
+    var rows = state.selected.map(function (n) {
+      var v = svc(n);
+      return '<li class="row-between"><span>' + esc(n) + '</span><span class="muted">' + money(v.price) + (v.priceNote || '') + '</span></li>';
+    }).join('');
+    var when = state.waitlist ? longDate(state.date) + ' · waitlist' : state.slot ? longDate(state.date) + ' at ' + state.slot.label : '';
+    return '<div class="label">Your visit</div><ul class="foot-list">' + rows + '</ul>' +
+      '<p class="sm">' + esc(providerName(state.provider)) + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + '</p>' +
+      (when ? '<p class="b sm">' + esc(when) + '</p>' : '');
   }
 
   function render() {
@@ -311,6 +325,7 @@ window.BuffAPI.ready.then(function () {
         ? state.selected.length + ' service' + (state.selected.length === 1 ? '' : 's') + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ×' + state.guests : '')
         : 'Choose a service';
       $('#foot-total').textContent = money(t.price);
+      $('#foot-detail').innerHTML = footDetail();
       var btn = $('#next');
       btn.disabled = !canContinue();
       btn.textContent = s === 4 ? (state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : 'Book now')) : 'Continue';
@@ -440,6 +455,7 @@ window.BuffAPI.ready.then(function () {
 
   $('#call').href = CFG.business.phoneHref;
   $('#call').setAttribute('aria-label', 'Call ' + CFG.business.name + ' at ' + CFG.business.phone);
+  $('.call-num').textContent = CFG.business.phone; // shown beside the icon on wide screens
 
   function start() {
     try { history.replaceState({ buffStep: 1 }, ''); } catch (e) { /* ignore */ }
