@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FBE9DD">
+  <meta name="color-scheme" content="light">
+  <title>Services and prices · Buff Beauty Bar</title>
+  <meta name="description" content="Services and prices at Buff Beauty Bar, New Orleans: blowouts, waxing, nails, makeup, spray tans and permanent jewelry.">
+
+  <!-- Link previews (iMessage, Facebook, etc.). Absolute URLs: update if the site moves. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Buff Beauty Bar">
+  <meta property="og:title" content="Services and prices · Buff Beauty Bar">
+  <meta property="og:description" content="Services and prices at Buff Beauty Bar, New Orleans: blowouts, waxing, nails, makeup, spray tans and permanent jewelry.">
+  <meta property="og:url" content="https://kevinkolb.github.io/buff/services.html">
+  <meta property="og:image" content="https://kevinkolb.github.io/buff/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Buff Beauty Bar logo">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Icons -->
+  <link rel="icon" href="favicon.ico" sizes="48x48">
+  <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Buff">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <a class="icon-btn left" href="index.html" aria-label="Back to booking">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </a>
+      <a class="logo" href="https://buffbeautybar.com" aria-label="Buff Beauty Bar home">
+        <img src="assets/buff-logo.png" alt="Buff Beauty Bar" width="581" height="576">
+      </a>
+      <a id="call" class="icon-btn right" href="tel:5045222833">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>
+        <span class="call-num"></span>
+      </a>
+    </header>
+    <nav class="site-nav" aria-label="Main"><a href="index.html">Book online</a><a href="services.html" aria-current="page">Services</a></nav>
+
+    <main id="main" class="main" aria-live="polite"></main>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/vendor/supabase-2.117.2.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/api-live.js"></script>
+    <script src="js/services.js"></script>
+</body>
+</html>

@@ -33,7 +33,7 @@ window.BuffAPI.ready.then(function () {
     notice: null,          // shown on step 3, e.g. when a time was just taken
   };
 
-  var STEP_LABELS = ['Services', 'Provider', 'Date & time', 'Your details'];
+  var STEP_LABELS = ['Booking', 'Provider', 'Date & time', 'Your details'];
 
   // ---------- helpers ----------
   function $(sel) { return document.querySelector(sel); }
@@ -570,6 +570,14 @@ window.BuffAPI.ready.then(function () {
   function start() {
     try { history.replaceState({ buffStep: 1 }, ''); } catch (e) { /* ignore */ }
     render();
+    // from the Services page: index.html?service=Blow%20Out → that service picked, on to step 2
+    var picked = new URLSearchParams(location.search).get('service');
+    var s0 = picked && CFG.services.filter(function (x) { return x.name === picked; })[0];
+    if (s0) {
+      state.selected = [s0.name]; state.cat = s0.cat;
+      try { history.replaceState({ buffStep: 1 }, '', location.pathname); } catch (e) { /* ignore */ }
+      if (!comboProblem()) { go(2); } else { render(); }
+    }
     // signed-in client: fill in their details (doesn't hold up the page)
     API.getClientAccount().then(function (acct) {
       if (!acct) { return; }

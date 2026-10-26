@@ -17,7 +17,7 @@ To host it for free, use GitHub Pages: open the repo's **Settings → Pages**, s
 
 ## The booking flow
 
-1. **Services.** Clients pick from the full Buff menu by category. They can book up to 3 guests at the same time.
+1. **Booking.** Clients pick from the full Buff menu by category (or tap + on the Services page to start with one picked). They can book up to 3 guests at the same time.
 2. **Provider.** A specific pro, or "First available".
 3. **Date & time.** Open times grouped into morning, afternoon and evening. If nothing works, they can join the waitlist.
 4. **Details.** Name, mobile, email and a note. Clients must accept the cancellation policy. A spot for the card-on-file field is ready for Stripe.
@@ -50,6 +50,7 @@ There's no login yet, so don't share the link widely.
 | `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team and staff logins, menu, business details, hours and booking rules |
 | `book.html`, `js/book.js` | Staff booking for phone and walk-in clients, with the day's schedule alongside |
 | `account.html`, `js/account.js` | Client sign-in: upcoming and past visits, cancel, update name and mobile |
+| `services.html`, `js/services.js` | Services and prices by category; + starts booking with that service picked |
 | `assets/buff-logo.png` | Logo, taken from a screenshot of buffbeautybar.com |
 | `assets/og-image.png`, `assets/*icon*`, `favicon.ico`, `*.webmanifest` | Link-preview image, browser and home-screen icons (blush background so they read in dark mode). Share tags use absolute URLs for `kevinkolb.github.io/buff/`: update them if the site moves to its own domain |
 
