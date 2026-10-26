@@ -47,10 +47,11 @@ There's no login yet, so don't share the link widely.
 | `js/api.js` | Data layer. It is a **mock** for now (see below) |
 | `js/app.js` | The booking flow |
 | `manage.html`, `js/manage.js` | Client lookup and cancel |
-| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team and staff logins, menu, business details, hours and booking rules |
+| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team (photos, Instagram) and staff logins, menu, specials, business details, hours and booking rules |
 | `book.html`, `js/book.js` | Staff booking for phone and walk-in clients, with the day's schedule alongside |
 | `account.html`, `js/account.js` | Client sign-in: upcoming and past visits, cancel, update name and mobile |
-| `services.html`, `js/services.js` | Services and prices by category; + starts booking with that service picked |
+| `services.html`, `js/services.js` | Services, descriptions and prices by category; + starts booking with that service picked |
+| `specials.html`, `js/specials.js`, `js/pricing.js` | Specials page; pricing.js works out special prices for display (the database decides the booked price) |
 | `assets/buff-logo.png` | Logo, taken from a screenshot of buffbeautybar.com |
 | `assets/og-image.png`, `assets/*icon*`, `favicon.ico`, `*.webmanifest` | Link-preview image, browser and home-screen icons (blush background so they read in dark mode). Share tags use absolute URLs for `kevinkolb.github.io/buff/`: update them if the site moves to its own domain |
 
@@ -84,6 +85,18 @@ What it will take:
 - **Who's calling:** match the caller's number to their client record; confirm identity before changing a booking.
 - **Records:** bookings made by voice are marked as such (like "booked by" for staff), with call recordings or transcripts kept per Buff's policy and Louisiana consent rules.
 - **Per business:** each business on the platform gets its own number, greeting and voice.
+
+### Someday: a co-op of independent providers
+
+Open the booking system to independent providers wherever they work: their own studio, a salon chair they rent, or the client's home. Providers pay to be listed, and clients search by service, time and place.
+
+What it will take:
+
+- **Where, not just when:** each provider's availability carries a place (a location on the platform, their own address, or a travel area for house calls). Clients search by neighborhood or distance as well as time, and travel time between places blocks the calendar.
+- **Provider accounts:** providers sign up, set their own services, prices, hours, photos and Instagram, and manage their own calendar. Builds on the multiple businesses and locations plan above (a solo provider is a business of one).
+- **Membership billing:** monthly or per-booking fees charged to providers (for example Stripe Billing), with listing paused when unpaid.
+- **Payouts:** client payments go to the provider who did the work (a marketplace setup such as Stripe Connect), with any platform fee taken out.
+- **Trust:** license and insurance checks where required, reviews, and rules for disputes and no-shows.
 
 ### Needs an account or a decision
 

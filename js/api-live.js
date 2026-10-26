@@ -101,7 +101,7 @@
     for (var d = 0; d < 7; d++) { hours[d] = null; }
     r[1].forEach(function (h) { hours[h.dow] = { open: h.open_time.slice(0, 5), close: h.close_time.slice(0, 5) }; });
     CFG.hours = hours;
-    CFG.providers = r[2].map(function (p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb }; });
+    CFG.providers = r[2].map(publicProvider);
     CFG.services = r[3].map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } if (v.description) { o.description = v.description; } return o; });
     CFG.qualified = qualifiedFrom(r[4], r[3]);
     CFG.closedDates = {};
@@ -121,6 +121,8 @@
     CFG.business.cancellationPolicyUrl = s.cancellation_policy_url;
     CFG.business.cancellationWindowHours = s.cancellation_window_hours;
   }
+
+  function publicProvider(p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb, photo: p.photo || '', instagram: p.instagram || '' }; }
 
   // specials: the database stores service ids; the pages work with names
   var serviceNames = {};
@@ -337,18 +339,20 @@
 
     listProviders: function () {
       return sb.from('providers').select('*').order('sort').order('id').then(unwrap).then(function (rows) {
-        return rows.map(function (p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb, sort: p.sort, active: p.active }; });
+        return rows.map(function (p) { return Object.assign(publicProvider(p), { sort: p.sort, active: p.active }); });
       });
     },
 
     saveProvider: function (p, isNew) {
       var row = { name: p.name, initials: p.initials, blurb: p.blurb, sort: p.sort, active: p.active };
+      if (p.photo !== undefined) { row.photo = p.photo || null; }
+      if (p.instagram !== undefined) { row.instagram = p.instagram || null; }
       var q = isNew ? sb.from('providers').insert(Object.assign({ id: p.id }, row)) : sb.from('providers').update(row).eq('id', p.id);
       return q.select().single().then(unwrap).then(function () {
         // keep this page's provider list (schedule columns, menus) in step
         return sb.from('providers').select('*').eq('active', true).order('sort').then(unwrap);
       }).then(function (rows) {
-        CFG.providers = rows.map(function (x) { return { id: x.id, name: x.name, initials: x.initials, blurb: x.blurb }; });
+        CFG.providers = rows.map(publicProvider);
         return p;
       });
     },

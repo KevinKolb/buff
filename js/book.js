@@ -320,7 +320,7 @@ window.BuffAPI.ready.then(function () {
       if (state.slot && state.slot.providerIds.indexOf(p.id) >= 0) {
         blocks += '<div class="s-ghost" style="top:' + ((ghostStart - hrs.open) * PX) + 'px;height:' + (totals().mins * PX - 2) + 'px"><span class="b">New: ' + esc(state.slot.label) + '</span></div>';
       }
-      return '<div class="s-col"><div class="s-colhead"><span class="avatar sm">' + esc(p.initials) + '</span><span>' + esc(p.name) + '</span></div>' +
+      return '<div class="s-col"><div class="s-colhead"><span class="avatar sm' + (p.photo ? ' has-photo' : '') + '">' + (p.photo ? '<img src="' + esc(p.photo) + '" alt="">' : esc(p.initials)) + '</span><span>' + esc(p.name) + '</span></div>' +
         '<div class="s-colbody" style="height:' + height + 'px">' + blocks + '</div></div>';
     }).join('');
 

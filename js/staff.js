@@ -49,6 +49,9 @@ window.BuffAPI.ready.then(function () {
   function addDays(iso, n) { var d = fromISO(iso); d.setDate(d.getDate() + n); return isoDate(d); }
   function longDate(iso) { return fromISO(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
   function shortDate(iso) { return fromISO(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
+  function avatar(p, cls) {
+    return '<span class="avatar' + (cls ? ' ' + cls : '') + (p.photo ? ' has-photo' : '') + '">' + (p.photo ? '<img src="' + esc(p.photo) + '" alt="">' : esc(p.initials)) + '</span>';
+  }
   function provider(id) { return CFG.providers.filter(function (p) { return p.id === id; })[0]; }
   function providerName(id) { return id === 'any' ? 'First available' : (provider(id) || { name: id }).name; }
   function hoursOn(iso) { var h = CFG.hours[fromISO(iso).getDay()]; return h ? { open: API.toMin(h.open), close: API.toMin(h.close) } : null; }
@@ -117,7 +120,7 @@ window.BuffAPI.ready.then(function () {
           '<span class="s-appt-name">' + esc(b.client.name) + (b.guests > 1 ? ' +' + (b.guests - 1) : '') + '</span>' +
           '<span class="s-appt-svc">' + esc(b.services.join(', ')) + '</span></button>';
       });
-      return '<div class="s-col"><div class="s-colhead"><span class="avatar sm">' + esc(p.initials) + '</span><span>' + esc(p.name) + '</span></div>' +
+      return '<div class="s-col"><div class="s-colhead">' + avatar(p, 'sm') + '<span>' + esc(p.name) + '</span></div>' +
         '<div class="s-colbody" style="height:' + height + 'px">' + blocks + '</div></div>';
     }).join('');
 
@@ -400,7 +403,7 @@ window.BuffAPI.ready.then(function () {
   }
 
   function draftFor(p) {
-    return state.drafts[p.id] || { name: p.name, initials: p.initials, blurb: p.blurb, active: p.active };
+    return state.drafts[p.id] || { name: p.name, initials: p.initials, blurb: p.blurb, instagram: p.instagram || '', active: p.active };
   }
 
   function teamFields(id, d) {
@@ -408,7 +411,8 @@ window.BuffAPI.ready.then(function () {
       '<div class="row-2 s-team-row">' +
         '<div class="field"><label for="tm-ini-' + id + '">Initials</label><input id="tm-ini-' + id + '" data-team="' + id + '" name="initials" type="text" maxlength="3" autocomplete="off" autocapitalize="characters" value="' + esc(d.initials) + '"></div>' +
         '<div class="field"><label for="tm-blurb-' + id + '">Shown under name</label><input id="tm-blurb-' + id + '" data-team="' + id + '" name="blurb" type="text" maxlength="60" autocomplete="off" placeholder="Hair · Makeup" value="' + esc(d.blurb) + '"></div>' +
-      '</div>';
+      '</div>' +
+      '<div class="field"><label for="tm-ig-' + id + '">Instagram <span class="muted xs">(optional)</span></label><div class="s-ig-in"><span aria-hidden="true">@</span><input id="tm-ig-' + id + '" data-team="' + id + '" name="instagram" type="text" maxlength="60" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="handle" value="' + esc(d.instagram || '') + '"></div></div>';
   }
 
   function viewTeam() {
@@ -419,12 +423,15 @@ window.BuffAPI.ready.then(function () {
       var dirty = !!state.drafts[p.id];
       var msg = state.teamMsg[p.id];
       return '<li class="card s-wl' + (p.active ? '' : ' is-hidden-pro') + '">' +
-        '<div class="row-between"><div class="row-wrap"><span class="avatar">' + esc(d.initials || '?') + '</span>' +
+        '<div class="row-between"><div class="row-wrap">' + avatar({ photo: p.photo, initials: d.initials || '?' }) +
           '<div><div class="b">' + esc(d.name || 'Unnamed') + '</div><div class="muted xs">' + (p.active ? 'On the booking page' : 'Hidden from booking') + '</div></div></div>' +
           '<div class="row-wrap s-move">' +
             '<button class="round" data-act="tm-move" data-v="-1" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
             '<button class="round" data-act="tm-move" data-v="1" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' down"' + (i === state.team.length - 1 ? ' disabled' : '') + '>↓</button>' +
           '</div></div>' +
+        '<div class="row-wrap s-photo"><label class="btn-outline sm s-photo-btn">' + (p.photo ? 'Change photo' : 'Add photo') +
+          '<input type="file" accept="image/*" data-photo="' + esc(p.id) + '" class="sr-only"></label>' +
+          (p.photo ? '<button class="btn-text-danger sm" data-act="tm-photo-remove" data-id="' + esc(p.id) + '">Remove photo</button>' : '') + '</div>' +
         teamFields(p.id, d) +
         '<label class="agree"><input type="checkbox" data-team="' + esc(p.id) + '" name="active"' + (d.active ? ' checked' : '') + '><span>Show on the booking page</span></label>' +
         (msg ? '<p class="' + (msg.err ? 'notice' : 'muted sm') + '" role="status">' + esc(msg.text) + '</p>' : '') +
@@ -443,17 +450,24 @@ window.BuffAPI.ready.then(function () {
       '<div class="s-two"><section class="s-lists"><ul class="stack">' + cards + '</ul></section><section class="s-lists">' + add + viewStaffLogins() + '</section></div>';
   }
 
+  // '@name', 'instagram.com/name' or a full link → 'name'; '' if blank; null if it isn't a handle
+  function igHandle(v) {
+    var h = String(v || '').trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '');
+    return !h ? '' : /^[A-Za-z0-9._]{1,30}$/.test(h) ? h : null;
+  }
+
   function cleanDraft(d) {
     var name = String(d.name || '').trim().replace(/\s+/g, ' ');
     var initials = String(d.initials || '').trim().toUpperCase();
     if (!initials) { initials = name.split(' ').map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase(); }
-    return { name: name, initials: initials, blurb: String(d.blurb || '').trim(), active: d.active !== false };
+    return { name: name, initials: initials, blurb: String(d.blurb || '').trim(), instagram: igHandle(d.instagram), active: d.active !== false };
   }
 
   function saveTeam(id) {
     var p = state.team.filter(function (x) { return x.id === id; })[0];
     var d = cleanDraft(state.drafts[id] || {});
     if (!d.name) { state.teamMsg[id] = { err: true, text: 'Please enter a name.' }; render(); return; }
+    if (d.instagram === null) { state.teamMsg[id] = { err: true, text: 'That Instagram handle doesn’t look right. Use letters, numbers, dots and underscores.' }; render(); return; }
     if (!d.active && state.team.filter(function (x) { return x.active && x.id !== id; }).length === 0) {
       state.teamMsg[id] = { err: true, text: 'At least one provider has to stay on the booking page.' }; render(); return;
     }
@@ -465,9 +479,36 @@ window.BuffAPI.ready.then(function () {
     }, function () { state.teamMsg[id] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
   }
 
+  // Shrinks the picture on this device to a small square (192 px JPEG) and saves it with the provider.
+  function shrinkPhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var n = 192, side = Math.min(img.naturalWidth, img.naturalHeight);
+        var c = document.createElement('canvas'); c.width = n; c.height = n;
+        var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);
+        g.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, n, n);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('not an image')); };
+      img.src = url;
+    });
+  }
+  function savePhoto(id, photo) {
+    var p = state.team.filter(function (x) { return x.id === id; })[0];
+    if (!p) { return; }
+    state.teamMsg[id] = { text: photo ? 'Saving photo…' : 'Removing photo…' }; render();
+    API.saveProvider(Object.assign({}, p, { photo: photo }), false).then(function () {
+      state.teamMsg[id] = { text: photo ? 'Photo saved.' : 'Photo removed.' };
+      return Promise.all([loadTeam(), load()]);
+    }, function () { state.teamMsg[id] = { err: true, text: 'Couldn’t save the photo. If this keeps happening, the database may need its latest update.' }; render(); });
+  }
+
   function addTeam() {
     var d = cleanDraft(state.drafts['new'] || {});
     if (!d.name) { state.teamMsg['new'] = { err: true, text: 'Please enter a name.' }; render(); return; }
+    if (d.instagram === null) { state.teamMsg['new'] = { err: true, text: 'That Instagram handle doesn’t look right. Use letters, numbers, dots and underscores.' }; render(); return; }
     var max = state.team.reduce(function (m, p) { var n = +(/^p(\d+)$/.exec(p.id) || [0, 0])[1]; return Math.max(m, n); }, 0);
     var sort = state.team.reduce(function (m, p) { return Math.max(m, p.sort); }, -1) + 1;
     var rec = Object.assign({ id: 'p' + (max + 1), sort: sort }, d, { active: true });
@@ -1144,6 +1185,7 @@ window.BuffAPI.ready.then(function () {
     else if (act === 'tm-save') { saveTeam(el.getAttribute('data-id')); }
     else if (act === 'tm-undo') { var uid = el.getAttribute('data-id'); delete state.drafts[uid]; delete state.teamMsg[uid]; render(); }
     else if (act === 'tm-add') { addTeam(); }
+    else if (act === 'tm-photo-remove') { savePhoto(el.getAttribute('data-id'), ''); }
     else if (act === 'tm-move') { moveTeam(el.getAttribute('data-id'), +v); }
     else if (act === 'auth-retry') { state.auth = 'signin'; render(); }
     else if (act === 'signout') { API.signOut().then(function () { state.staff = null; state.auth = 'signin'; render(); }); }
@@ -1173,6 +1215,13 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('change', onFormInput);
   function onFormInput(e) {
     var t = e.target;
+    var pid = t.getAttribute && t.getAttribute('data-photo');
+    if (pid) {
+      if (e.type !== 'change' || !t.files || !t.files[0]) { return; }
+      shrinkPhoto(t.files[0]).then(function (url) { savePhoto(pid, url); },
+        function () { state.teamMsg[pid] = { err: true, text: 'That file isn’t a picture we can use. Try a JPEG or PNG.' }; render(); });
+      return;
+    }
     if (t.id === 'cl-date') { state.closedDraft.date = t.value; delete state.teamMsg.closed; return; }
     if (t.id === 'cl-label') { state.closedDraft.label = t.value; return; }
     var spk = t.getAttribute && t.getAttribute('data-sp');

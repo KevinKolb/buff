@@ -56,6 +56,10 @@ window.BuffAPI.ready.then(function () {
   function fromISO(iso) { return new Date(iso + 'T00:00:00'); }
   function longDate(iso) { return fromISO(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
   function providerName(id) { if (id === 'any') { return 'First available'; } return CFG.providers.filter(function (p) { return p.id === id; })[0].name; }
+  var IG_ICON = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>';
+  function avatar(p, cls) {
+    return '<span class="avatar' + (cls ? ' ' + cls : '') + (p.photo ? ' has-photo' : '') + '">' + (p.photo ? '<img src="' + esc(p.photo) + '" alt="">' : esc(p.initials)) + '</span>';
+  }
   function icon(name) {
     var paths = {
       check: '<path d="M20 6L9 17l-5-5"/>',
@@ -278,10 +282,11 @@ window.BuffAPI.ready.then(function () {
     var opts = [{ id: 'any', name: 'First available', initials: '', blurb: 'Most openings' }].concat(qualifiedPros());
     var rows = opts.map(function (p) {
       var on = state.provider === p.id;
-      return '<li><button class="pro' + (on ? ' is-on' : '') + '" data-act="pro" data-v="' + p.id + '" aria-pressed="' + on + '">' +
-        '<span class="avatar">' + (p.id === 'any' ? icon('star') : esc(p.initials)) + '</span>' +
+      var ig = p.instagram ? '<a class="pro-ig" href="https://www.instagram.com/' + encodeURIComponent(p.instagram) + '/" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on Instagram (@' + esc(p.instagram) + ')">' + IG_ICON + '</a>' : '';
+      return '<li class="pro-li"><button class="pro' + (on ? ' is-on' : '') + (ig ? ' has-ig' : '') + '" data-act="pro" data-v="' + p.id + '" aria-pressed="' + on + '">' +
+        (p.id === 'any' ? '<span class="avatar">' + icon('star') + '</span>' : avatar(p)) +
         '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + '</span></span>' +
-        (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
+        (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button>' + ig + '</li>';
     }).join('');
     var hidden = CFG.providers.length - qualifiedPros().length;
     return '<h1 class="h1">Who would you like?</h1>' +
