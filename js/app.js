@@ -28,6 +28,7 @@ window.BuffAPI.ready.then(function () {
     errors: {},
     submitting: false,
     result: null,
+    account: null,         // signed-in client: { email, client: { id, name, phone, email } }
     notice: null,          // shown on step 3, e.g. when a time was just taken
   };
 
@@ -126,7 +127,10 @@ window.BuffAPI.ready.then(function () {
       '<div class="chips" role="toolbar" aria-label="Service categories">' + chips + '</div>' +
       '<ul class="card list" aria-label="' + esc(state.cat) + ' services">' + rows + '</ul>' +
       '<p class="muted sm center">Nail art, extra styling time or something not listed? Add a note at checkout.</p>' +
-      '<a class="link center" href="manage.html">Already booked? Change or cancel</a>';
+      (state.account
+        ? '<a class="link center" href="account.html">My account and visits</a>'
+        : '<a class="link center" href="account.html">Sign in to see your visits</a>' +
+          '<a class="link center" href="manage.html">Already booked? Change or cancel</a>');
   }
 
   function viewProvider() {
@@ -215,7 +219,10 @@ window.BuffAPI.ready.then(function () {
       '<form id="details" class="card form" novalidate>' +
         field('name', 'Name', 'text', 'name', 'First and last') +
         field('phone', 'Mobile', 'tel', 'tel', '(504) 555-0123', 'For your confirmation and reminder texts') +
-        field('email', 'Email', 'email', 'email', 'you@email.com') +
+        (state.account
+          ? '<div class="field"><label>Email</label><div class="a-email">' + esc(state.account.email) + '</div>' +
+              '<span class="muted xs">Signed in. <a href="account.html">Not you?</a></span></div>'
+          : field('email', 'Email', 'email', 'email', 'you@email.com', '<a href="account.html">Have an account? Sign in</a> to fill this in next time.')) +
         field('note', 'Note (optional)', 'text', '', 'Nail art idea, guest names…') +
       '</form>' +
       (state.waitlist ? '' :
@@ -240,7 +247,9 @@ window.BuffAPI.ready.then(function () {
       summaryCard() +
       '<p class="center xs muted">Reference ' + esc(r.id) + ' · ' + esc(CFG.business.name) + ', ' + esc(CFG.business.address) + '</p>' +
       (wl ? '' : '<button class="btn-outline" data-act="ics">Add to calendar</button>') +
-      (wl ? '' : '<a class="link center" href="manage.html?ref=' + encodeURIComponent(r.id) + '">Need to cancel? Manage this booking</a>') +
+      (wl ? '' : state.account
+        ? '<a class="link center" href="account.html">See all your visits</a>'
+        : '<a class="link center" href="manage.html?ref=' + encodeURIComponent(r.id) + '">Need to cancel? Manage this booking</a>') +
       '<button class="link" data-act="restart">Book another visit</button></div>';
   }
 
@@ -412,6 +421,16 @@ window.BuffAPI.ready.then(function () {
   function start() {
     try { history.replaceState({ buffStep: 1 }, ''); } catch (e) { /* ignore */ }
     render();
+    // signed-in client: fill in their details (doesn't hold up the page)
+    API.getClientAccount().then(function (acct) {
+      if (!acct) { return; }
+      state.account = acct;
+      var c = state.client;
+      if (!c.name) { c.name = acct.client.name || ''; }
+      if (!c.phone) { c.phone = acct.client.phone || ''; }
+      c.email = acct.email;
+      render();
+    }, function () { /* not signed in or offline: book as a guest */ });
   }
 
   start();

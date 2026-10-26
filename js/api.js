@@ -38,6 +38,7 @@
     db.waitlist = db.waitlist || [];
     db.timeOff = db.timeOff || [];
     db.sampleStatus = db.sampleStatus || {}; // status changes made to seeded sample appointments
+    db.clients = db.clients || [];          // client records (see clientFor)
     if (db.providers) { CFG.providers = db.providers.filter(function (p) { return p.active; }); } // edited on the Team tab
     if (db.services) { CFG.services = db.services.filter(function (s) { return s.active; }); }    // edited on the Menu tab
     if (db.categoryOrder) { CFG.categoryOrder = db.categoryOrder; }
@@ -166,6 +167,9 @@
       if (clash) { return fail('taken', 'That time was just taken.'); }
       var rec = Object.assign({ id: newId('BB'), createdAt: new Date().toISOString(), status: 'booked' }, clone(payload));
       rec.start = start;
+      rec.client.email = String(rec.client.email || '').trim().toLowerCase();
+      rec.clientId = clientFor(payload, payload._staff);
+      delete rec._staff; delete rec.client.staffNote;
       db.bookings.push(rec); save();
       return delay(rec);
     },
@@ -180,7 +184,10 @@
       if (roles.indexOf('manager') < 0 && roles.indexOf('reservationist') < 0) { return fail('not_allowed', 'Not allowed.'); }
       if (!payload.policyAgreed) { return fail('policy_required', 'Policy not confirmed.'); }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((payload.client && payload.client.email) || '')) { return fail('invalid_client', 'Email required.'); }
-      return api.createBooking(payload).then(function (rec) {
+      if (payload.clientId && db.clients.some(function (c) { return c.email === payload.client.email.trim().toLowerCase() && c.id !== payload.clientId; })) {
+        return fail('email_in_use', 'Another client already uses that email.');
+      }
+      return api.createBooking(Object.assign({ _staff: true }, payload)).then(function (rec) {
         sync();
         var b = db.bookings.filter(function (x) { return x.id === rec.id; })[0];
         b.bookedBy = 'demo'; save();
@@ -380,10 +387,63 @@
       return delay(true);
     },
 
+    // ======== client accounts ========
+    // Demo: "signing in" happens instantly (no email). Live: an emailed link.
+
+    /** { email, client: { id, name, phone, email } } for a signed-in client, or null. */
+    getClientAccount: function () {
+      sync();
+      if (!db.clientSession) { return delay(null); }
+      var em = db.clientSession;
+      var c = db.clients.filter(function (x) { return x.email === em; })[0];
+      if (!c) { c = { id: newId('C'), name: '', phone: '', email: em, staffNote: '' }; db.clients.push(c); save(); }
+      return delay({ email: em, client: { id: c.id, name: c.name, phone: c.phone, email: c.email } });
+    },
+    /** Resolves { instant: true } in demo (already signed in); live sends an email. */
+    clientSignIn: function (email) {
+      sync(); db.clientSession = email.trim().toLowerCase(); save();
+      return delay({ instant: true });
+    },
+    clientSignOut: function () { sync(); delete db.clientSession; save(); return delay(true); },
+
+    updateMyProfile: function (name, phone) {
+      sync();
+      var c = db.clients.filter(function (x) { return x.email === db.clientSession; })[0];
+      if (!c) { return fail('not_signed_in', 'Not signed in.'); }
+      c.name = name.trim(); c.phone = phone.trim(); save();
+      return delay({ id: c.id, name: c.name, phone: c.phone, email: c.email });
+    },
+
+    /** The signed-in client's bookings, newest first. */
+    myBookings: function () {
+      sync();
+      var c = db.clients.filter(function (x) { return x.email === db.clientSession; })[0];
+      if (!c) { return delay([]); }
+      return delay(db.bookings.filter(function (b) { return b.clientId === c.id; })
+        .sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : b.start - a.start; }));
+    },
+
+    cancelMyBooking: function (id) {
+      sync();
+      var c = db.clients.filter(function (x) { return x.email === db.clientSession; })[0];
+      var b = c && db.bookings.filter(function (x) { return x.id === id && x.clientId === c.id && x.status === 'booked'; })[0];
+      if (!b) { return fail('not_found', 'Booking not found.'); }
+      b.status = 'cancelled'; b.cancelledBy = 'client'; b.cancelledAt = new Date().toISOString(); save();
+      return delay(b);
+    },
+
+    // ======== clients (staff) ========
+
+    /** Every client: [{ id, name, phone, email, staffNote }], by name. */
+    listClients: function () {
+      sync();
+      return delay(db.clients.slice().sort(function (a, b) { return (a.name || a.email).localeCompare(b.name || b.email); }));
+    },
+
     /** Deletes everything saved in this browser (prototype only). */
     resetDemo: function () {
       sync();
-      db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; save();
+      db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; delete db.clientSession; save();
       if (db.providers || db.services || db.categoryOrder || db.staffList) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; save(); location.reload(); }
       return delay(true);
     },
@@ -391,6 +451,28 @@
 
   function allProviders() {
     return clone(db.providers || CFG.providers.map(function (p, i) { return Object.assign({ sort: i, active: true }, p); }));
+  }
+
+  // Same rules as the database's _client_for: staff may pick and update a
+  // client; online, a signed-in client books as themselves; anyone else is
+  // matched by email and can't change an existing record.
+  function clientFor(p, staff) {
+    var em = String(p.client.email || '').trim().toLowerCase(), nm = p.client.name.trim(), ph = p.client.phone.trim();
+    var c;
+    if (staff) {
+      c = p.clientId ? db.clients.filter(function (x) { return x.id === p.clientId; })[0] : db.clients.filter(function (x) { return x.email === em; })[0];
+      if (!c) { c = { id: newId('C'), name: '', phone: '', email: em, staffNote: '' }; db.clients.push(c); }
+      c.name = nm; c.phone = ph; c.email = em;
+      if (p.client.staffNote != null) { c.staffNote = p.client.staffNote; }
+      return c.id;
+    }
+    if (db.clientSession) {
+      c = db.clients.filter(function (x) { return x.email === db.clientSession; })[0];
+      if (c) { c.name = nm; c.phone = ph; return c.id; }
+    }
+    c = db.clients.filter(function (x) { return x.email === em; })[0];
+    if (!c) { c = { id: newId('C'), name: nm, phone: ph, email: em, staffNote: '' }; db.clients.push(c); }
+    return c.id;
   }
 
   function demoStaff() {

@@ -33,7 +33,7 @@
     return {
       id: r.id, date: r.date, start: r.start_min, time: hhmm(r.start_min), mins: r.mins,
       provider: r.provider_pref, providerIds: r.provider_ids, services: r.services, guests: r.guests,
-      total: +r.total, status: r.status, cancelledBy: r.cancelled_by, createdAt: r.created_at, bookedBy: r.booked_by,
+      total: +r.total, status: r.status, cancelledBy: r.cancelled_by, createdAt: r.created_at, bookedBy: r.booked_by, clientId: r.client_id,
       client: { name: r.client_name, phone: r.client_phone, email: r.client_email, note: r.note },
     };
   }
@@ -115,6 +115,44 @@
 
     createBooking: function (payload) {
       return sb.rpc('create_booking', { p: payload }).then(unwrap).then(toBooking);
+    },
+
+    // ======== client accounts ========
+
+    /** { email, client: { id, name, phone, email } } for a signed-in client, or null. Links the login on first use. */
+    getClientAccount: function () {
+      return sb.auth.getSession().then(function (res) {
+        var session = res.data && res.data.session;
+        if (!session) { return null; }
+        return sb.rpc('claim_client').then(unwrap).then(function (c) { return { email: session.user.email, client: c }; });
+      });
+    },
+
+    /** Emails a sign-in link that comes back to this page. */
+    clientSignIn: function (email) {
+      return sb.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: location.origin + location.pathname } }).then(unwrap);
+    },
+
+    clientSignOut: function () { return sb.auth.signOut(); },
+
+    updateMyProfile: function (name, phone) {
+      return sb.rpc('update_my_profile', { p_name: name, p_phone: phone }).then(unwrap);
+    },
+
+    myBookings: function () {
+      return sb.rpc('my_bookings').then(unwrap).then(function (rows) { return (rows || []).map(toBooking); });
+    },
+
+    cancelMyBooking: function (id) {
+      return sb.rpc('cancel_my_booking', { p_id: id }).then(unwrap).then(toBooking);
+    },
+
+    // ======== clients (staff) ========
+
+    listClients: function () {
+      return sb.from('clients').select('id,name,phone,email,staff_note').order('name').order('email').then(unwrap).then(function (rows) {
+        return rows.map(function (c) { return { id: c.id, name: c.name, phone: c.phone, email: c.email, staffNote: c.staff_note }; });
+      });
     },
 
     staffCreateBooking: function (payload) {

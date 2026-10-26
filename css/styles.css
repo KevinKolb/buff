@@ -134,3 +134,14 @@ a.link { display: flex; align-items: center; justify-content: center; }
 /* Small link to the front desk at the bottom of every client page */
 .staff-link { margin-top: auto; align-self: center; min-height: 44px; display: flex; align-items: center; padding: 0 16px; font-size: 12px; color: var(--muted); }
 .change-link { align-self: flex-start; min-height: 36px; padding: 0 4px; margin-top: -6px; }
+
+/* Client account */
+.a-email { min-height: 50px; display: flex; align-items: center; padding: 0 12px; border-radius: 10px; background: var(--line-soft); font-size: 15px; word-break: break-all; }
+.a-visit.is-cancelled { opacity: .7; }
+.a-visit .btn-outline.sm, .a-visit .btn-danger.sm { min-height: 44px; padding: 0 18px; font-size: 14px; align-self: flex-start; margin-top: 6px; }
+.btn-danger.sm { border-radius: 22px; }
+.a-confirm { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.a-past summary { min-height: 44px; display: flex; align-items: center; font-weight: 600; cursor: pointer; color: var(--slate); }
+.a-past .stack { margin-top: 8px; }
+.link-inline { border: none; background: none; padding: 0; font: inherit; color: var(--slate); text-decoration: underline; cursor: pointer; }
+.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

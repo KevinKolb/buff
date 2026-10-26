@@ -33,7 +33,8 @@ window.BuffAPI.ready.then(function () {
         (state.error ? '<p class="notice" role="alert">' + esc(state.error) + '</p>' : '') +
         '<button class="btn-primary" type="submit"' + (state.busy ? ' disabled' : '') + '>' + (state.busy ? 'Looking…' : 'Find my booking') + '</button>' +
       '</form>' +
-      '<p class="muted sm center">Can’t find it? Call us at <a href="' + CFG.business.phoneHref + '">' + esc(CFG.business.phone) + '</a>.</p>';
+      '<p class="muted sm center">Can’t find it? Call us at <a href="' + CFG.business.phoneHref + '">' + esc(CFG.business.phone) + '</a>.</p>' +
+      '<a class="link center" href="account.html">Sign in to see all your visits</a>';
   }
 
   function bookingCard(b) {

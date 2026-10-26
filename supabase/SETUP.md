@@ -34,11 +34,11 @@ In `js/config.js`, fill in `backend.supabaseUrl` with the project URL and `backe
 ## 4. Settings only the owner can change (dashboard, works on a phone)
 
 - **GitHub Pages:** repo Settings → Pages → deploy from the branch in use, folder `/ (root)`. The site address will be `https://<github-user>.github.io/buff/`.
-- **Supabase sign-in redirect:** Authentication → URL Configuration. Set **Site URL** to the Pages address, and add `<Pages address>staff.html` under **Redirect URLs**. Without this, staff sign-in links open the wrong page.
+- **Supabase sign-in redirect:** Authentication → URL Configuration. Set **Site URL** to the Pages address, and add `<Pages address>**` (two asterisks) under **Redirect URLs**, so sign-in links can return to any page: `staff.html` for staff, `account.html` for clients. Without this, sign-in links open the wrong page.
 
 ## 5. Email
 
-Supabase's built-in email only sends to members of the Supabase organization, and only a few messages an hour. That's enough for the manager to test. Before other staff sign in, set up custom SMTP (for example Resend, free tier) under Authentication → Emails → SMTP Settings.
+Supabase's built-in email only sends to members of the Supabase organization, and only a few messages an hour. That's enough for the manager to test. Before other staff **or any clients** sign in, set up custom SMTP (for example Resend, free tier) under Authentication → Emails → SMTP Settings.
 
 ## Adding staff later
 

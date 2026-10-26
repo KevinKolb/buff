@@ -157,3 +157,13 @@
 #to-desk { min-height: 44px; padding: 0 16px; font-size: 14px; white-space: nowrap; }
 .bk .times { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .bk .time { min-height: 44px; font-size: 13px; padding: 0 2px; }
+/* client picker (book.html) */
+.bk-pick { position: relative; }
+.bk-matches { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; }
+.bk-matches:not(:empty) { border: 1px solid var(--border); background: #fff; }
+.bk-matches li + li { border-top: 1px solid var(--line-soft); }
+.bk-match { width: 100%; min-height: 52px; border: none; background: transparent; text-align: left; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; font-family: inherit; }
+.bk-match:hover, .bk-match:focus-visible { background: var(--blush); }
+.bk-nomatch { padding: 10px 12px; }
+.bk-picked { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; background: var(--blush); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+.field textarea { border-radius: 10px; border: 1px solid var(--border); padding: 10px 12px; font-size: 16px; font-family: inherit; background: #fff; color: var(--ink); resize: vertical; width: 100%; }

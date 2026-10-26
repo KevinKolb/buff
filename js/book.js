@@ -29,7 +29,10 @@ window.BuffAPI.ready.then(function () {
     slot: null,
     day: null,          // { bookings, timeOff } for state.date
     picked: null,       // appointment tapped on the day schedule
-    client: { name: '', phone: '', email: '', note: '' },
+    client: { name: '', phone: '', email: '', note: '', staffNote: '' },
+    clients: null,      // every client, for the picker
+    clientId: null,     // picked existing client
+    clientQuery: '',
     policy: false,
     errors: {},
     notice: '',
@@ -152,6 +155,50 @@ window.BuffAPI.ready.then(function () {
       (err ? '<span class="err" id="be-' + id + '">' + esc(err) + '</span>' : (hint ? '<span class="muted xs">' + hint + '</span>' : '')) + '</div>';
   }
 
+  // ----- client picker -----
+  function digits(s) { return String(s || '').replace(/\D/g, ''); }
+  function matches(q) {
+    q = q.trim().toLowerCase();
+    if (!q || !state.clients) { return []; }
+    var qd = digits(q);
+    return state.clients.filter(function (c) {
+      return (c.name || '').toLowerCase().indexOf(q) >= 0 || (c.email || '').indexOf(q) >= 0 ||
+        (qd.length >= 3 && digits(c.phone).indexOf(qd) >= 0);
+    }).slice(0, 8);
+  }
+  function matchList() {
+    var q = state.clientQuery.trim();
+    if (!q) { return ''; }
+    var list = matches(q);
+    if (!list.length) { return '<li class="bk-nomatch muted sm">No client matches “' + esc(q) + '”. Fill in their details below to add them.</li>'; }
+    return list.map(function (c) {
+      return '<li><button type="button" class="bk-match" data-act="pick-client" data-v="' + esc(c.id) + '">' +
+        '<span class="b">' + esc(c.name || '(no name)') + '</span><span class="muted xs">' + esc([c.phone, c.email].filter(Boolean).join(' · ')) + '</span></button></li>';
+    }).join('');
+  }
+  function viewPicker() {
+    if (state.clientId) {
+      return '<div class="bk-picked"><span>Booking for an existing client. Changes below update their record.</span>' +
+        '<button class="link sm" data-act="new-client">New client instead</button></div>';
+    }
+    return '<div class="field bk-pick"><label for="bk-find">Find a client</label>' +
+      '<input id="bk-find" type="search" autocomplete="off" placeholder="' + (state.clients ? 'Name, mobile or email' : 'Loading clients…') + '" value="' + esc(state.clientQuery) + '" aria-controls="bk-matches">' +
+      '<ul id="bk-matches" class="bk-matches" aria-label="Matching clients">' + matchList() + '</ul>' +
+      '<span class="muted xs">Or fill in a new client’s details below.</span></div>';
+  }
+  function pickClient(id) {
+    var c = (state.clients || []).filter(function (x) { return x.id === id; })[0];
+    if (!c) { return; }
+    state.clientId = c.id; state.clientQuery = '';
+    state.client = { name: c.name || '', phone: c.phone || '', email: c.email || '', note: '', staffNote: c.staffNote || '' };
+    state.errors = {};
+    render();
+    var f = $('#bk-name'); if (f) { f.focus(); }
+  }
+  function loadClients() {
+    return API.listClients().then(function (list) { state.clients = list; render(); }, function () { state.clients = []; render(); });
+  }
+
   function viewClient() {
     var t = totals();
     var summary = state.slot
@@ -161,12 +208,14 @@ window.BuffAPI.ready.then(function () {
           '<div class="muted sm">' + esc(state.slot.providerIds.map(providerName).join(', ')) + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + ' · ' + money(t.price) + '</div></div>'
       : '<p class="muted sm">Pick a time above.</p>';
     var policyErr = state.errors.policy;
-    return '<div class="card form bk-client"><div class="b">3. Client</div>' +
+    return '<div class="card form bk-client"><div class="b">3. Client</div>' + viewPicker() +
       '<form id="bk-form" class="bk-fields" novalidate>' +
         field('name', 'Name', 'text', 'First and last') +
         field('phone', 'Mobile', 'tel', '(504) 555-0123') +
         field('email', 'Email', 'email', 'client@email.com', 'For their confirmation') +
-        field('note', 'Note (optional)', 'text', 'Nail art idea, guest names…') +
+        field('note', 'Note for this visit (optional)', 'text', 'Nail art idea, guest names…') +
+        '<div class="field"><label for="bk-staffNote">Client notes (staff only)</label>' +
+          '<textarea id="bk-staffNote" name="staffNote" rows="2" placeholder="Allergies, preferences… Saved on their record, never shown to the client.">' + esc(state.client.staffNote) + '</textarea></div>' +
       '</form>' +
       '<div class="bk-card"><div class="row-between"><span class="b sm">Card on file</span><span class="muted xs">Secured by Stripe</span></div>' +
         '<div class="card-mock" aria-label="Card details (coming soon)"><span>Card number · MM/YY · CVC</span></div>' +
@@ -292,12 +341,12 @@ window.BuffAPI.ready.then(function () {
     API.staffCreateBooking({
       services: state.selected.slice(), guests: state.guests, mins: t.mins, total: t.price,
       provider: state.provider, date: state.date, time: state.slot.time, providerIds: state.slot.providerIds,
-      policyAgreed: true,
-      client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim() },
+      policyAgreed: true, clientId: state.clientId || undefined,
+      client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim(), staffNote: state.client.staffNote.trim() },
     }).then(function (rec) {
       state.submitting = false; state.result = rec; state.errors = {};
       state.slot = null; // the dashed preview becomes the real booking on the day schedule
-      loadDay(); loadSlots();
+      loadDay(); loadSlots(); loadClients();
     }, function (err) {
       state.submitting = false;
       if (err.code === 'taken') { state.notice = 'That time was just booked. Please pick another.'; loadSlots(); loadDay(); return; }
@@ -306,6 +355,8 @@ window.BuffAPI.ready.then(function () {
         policy_required: 'Tick the cancellation policy box.',
         invalid_client: 'Check the client’s name, mobile and email.',
         invalid_services: 'One of those services is no longer on the menu. Refresh the page.',
+        email_in_use: 'Another client already uses that email. Find them with the search instead.',
+        client_not_found: 'That client record is gone. Tap “New client instead” and try again.',
       }[err.code];
       state.errors = { form: msg || 'Something went wrong. Check your connection and try again.' };
       render();
@@ -332,9 +383,15 @@ window.BuffAPI.ready.then(function () {
     }
     else if (act === 'pick') { state.picked = state.picked === v ? null : v; render(); }
     else if (act === 'book') { book(); }
+    else if (act === 'pick-client') { pickClient(v); }
+    else if (act === 'new-client') {
+      state.clientId = null; state.client = { name: '', phone: '', email: '', note: '', staffNote: '' }; state.errors = {};
+      render(); var q = $('#bk-find'); if (q) { q.focus(); }
+    }
     else if (act === 'another') {
       state.result = null; state.selected = []; state.guests = 1; state.provider = 'any'; state.slot = null; state.slots = null;
-      state.client = { name: '', phone: '', email: '', note: '' }; state.policy = false; state.errors = {};
+      state.client = { name: '', phone: '', email: '', note: '', staffNote: '' }; state.policy = false; state.errors = {};
+      state.clientId = null; state.clientQuery = '';
       render(); window.scrollTo(0, 0);
     }
   });
@@ -342,6 +399,7 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('input', function (e) {
     var t = e.target;
     if (t.form && t.form.id === 'bk-form' && t.name) { state.client[t.name] = t.value; }
+    if (t.id === 'bk-find') { state.clientQuery = t.value; $('#bk-matches').innerHTML = matchList(); } // only the list, so typing isn't interrupted
   });
   document.addEventListener('change', function (e) {
     var t = e.target;
@@ -357,7 +415,7 @@ window.BuffAPI.ready.then(function () {
     state.staff = s;
     state.auth = !s ? 'signin' : (hasRole('manager') || hasRole('reservationist')) ? 'ok' : 'denied';
     render();
-    if (state.auth === 'ok') { loadDay(); }
+    if (state.auth === 'ok') { loadDay(); loadClients(); }
   }, function () {
     state.auth = 'signin'; render();
   });
