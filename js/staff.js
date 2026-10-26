@@ -18,7 +18,9 @@ window.BuffAPI.ready.then(function () {
     loading: true,
     team: null,        // all providers incl. hidden (managers' Team tab)
     drafts: {},        // unsaved edits on the Team tab, by provider id ('new' for the add form)
-    teamMsg: {},       // per-card status line, by provider id
+    teamMsg: {},       // per-card status line, by provider id (and menu keys like 'svc:12')
+    menu: null,        // { services, categories } for the managers' Menu tab
+    menuCat: null,     // category being edited on the Menu tab
     auth: 'checking',  // checking → signin → sent | denied | ok
     staff: null,       // { email, role, providerId }
     signInEmail: '',
@@ -333,6 +335,193 @@ window.BuffAPI.ready.then(function () {
     Promise.all(saves).then(function () { return Promise.all([loadTeam(), load()]); }, function () { loadTeam(); });
   }
 
+  // ---------- menu (managers) ----------
+  function loadMenu() {
+    return API.listMenu().then(function (m) { state.menu = m; render(); });
+  }
+
+  function svcById(id) { return state.menu.services.filter(function (s) { return String(s.id) === String(id); })[0]; }
+
+  function menuBase(key) {
+    var kind = key.split(':')[0], rest = key.slice(kind.length + 1);
+    if (kind === 'cat') { return { name: rest === 'new' ? '' : rest }; }
+    if (rest === 'new') { return { name: '', price: '', mins: 30, cat: state.menuCat, priceNote: false, active: true }; }
+    var s = svcById(rest);
+    return { name: s.name, price: s.price, mins: s.mins, cat: s.cat, priceNote: !!s.priceNote, active: s.active };
+  }
+  function menuDraft(key) { return state.drafts[key] || menuBase(key); }
+  function msgLine(key) {
+    var m = state.teamMsg[key];
+    return m ? '<p class="' + (m.err ? 'notice' : 'muted sm') + '" role="status">' + esc(m.text) + '</p>' : '';
+  }
+
+  function svcFields(key, d) {
+    var id = key.replace(':', '-');
+    var cats = state.menu.categories.map(function (c) { return '<option' + (c === d.cat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+    return '<div class="field"><label for="mn-name-' + id + '">Service name</label><input id="mn-name-' + id + '" data-menu="' + esc(key) + '" name="name" type="text" maxlength="60" autocomplete="off" value="' + esc(d.name) + '"></div>' +
+      '<div class="s-svc-row">' +
+        '<div class="field"><label for="mn-price-' + id + '">Price ($)</label><input id="mn-price-' + id + '" data-menu="' + esc(key) + '" name="price" type="number" inputmode="decimal" min="0" step="1" value="' + esc(d.price) + '"></div>' +
+        '<div class="field"><label for="mn-mins-' + id + '">Minutes</label><input id="mn-mins-' + id + '" data-menu="' + esc(key) + '" name="mins" type="number" inputmode="numeric" min="5" max="600" step="5" value="' + esc(d.mins) + '"></div>' +
+        '<div class="field"><label for="mn-cat-' + id + '">Category</label><select id="mn-cat-' + id + '" data-menu="' + esc(key) + '" name="cat">' + cats + '</select></div>' +
+      '</div>' +
+      '<label class="agree"><input type="checkbox" data-menu="' + esc(key) + '" name="priceNote"' + (d.priceNote ? ' checked' : '') + '><span>Starting price (shows as ' + money(+d.price || 0) + '+)</span></label>';
+  }
+
+  function viewMenu() {
+    if (!isManager()) { return '<h1 class="h1">Menu</h1><div class="card pad"><p class="center muted">Only managers can edit the menu.</p></div>'; }
+    if (!state.menu) { return '<h1 class="h1">Menu</h1><p class="muted center pad" role="status">Loading…</p>'; }
+    var cats = state.menu.categories;
+    if (cats.indexOf(state.menuCat) < 0) { state.menuCat = cats[0] || null; }
+    function count(c) { return state.menu.services.filter(function (s) { return s.cat === c; }).length; }
+
+    // categories
+    var catRows = cats.map(function (c, i) {
+      var key = 'cat:' + c, d = menuDraft(key), n = count(c);
+      return '<li class="s-cat">' +
+        '<input aria-label="Category name" data-menu="' + esc(key) + '" name="name" type="text" maxlength="30" autocomplete="off" value="' + esc(d.name) + '">' +
+        '<span class="muted xs s-cat-n">' + n + (n === 1 ? ' service' : ' services') + '</span>' +
+        '<button class="btn-outline sm" data-act="mn-cat-rename" data-k="' + esc(c) + '"' + (state.drafts[key] ? '' : ' disabled') + '>Rename</button>' +
+        '<button class="round" data-act="mn-cat-move" data-k="' + esc(c) + '" data-v="-1" aria-label="Move ' + esc(c) + ' earlier"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+        '<button class="round" data-act="mn-cat-move" data-k="' + esc(c) + '" data-v="1" aria-label="Move ' + esc(c) + ' later"' + (i === cats.length - 1 ? ' disabled' : '') + '>↓</button>' +
+        (n ? '' : '<button class="btn-text-danger sm" data-act="mn-cat-del" data-k="' + esc(c) + '">Remove</button>') +
+        msgLine(key) + '</li>';
+    }).join('');
+    var nc = menuDraft('cat:new');
+    var catCard = '<div class="card form"><div class="b">Categories</div>' +
+      '<p class="muted xs">This is the order of the buttons on the booking page.</p>' +
+      '<ul class="stack s-cats">' + catRows + '</ul>' +
+      '<div class="s-cat s-cat-add"><input aria-label="New category name" data-menu="cat:new" name="name" type="text" maxlength="30" autocomplete="off" placeholder="New category" value="' + esc(nc.name) + '">' +
+        '<button class="btn-primary sm" data-act="mn-cat-add">Add</button></div>' + msgLine('cat:new') + '</div>';
+
+    // services in the chosen category
+    var chips = cats.map(function (c) {
+      return '<button class="chip' + (c === state.menuCat ? ' is-on' : '') + '" data-act="mn-pick" data-k="' + esc(c) + '" aria-pressed="' + (c === state.menuCat) + '">' + esc(c) + '</button>';
+    }).join('');
+    var list = state.menu.services.filter(function (s) { return s.cat === state.menuCat; });
+    var cards = list.map(function (s, i) {
+      var key = 'svc:' + s.id, d = menuDraft(key), dirty = !!state.drafts[key];
+      return '<li class="card s-wl' + (s.active ? '' : ' is-hidden-pro') + '">' +
+        '<div class="row-between"><div><div class="b">' + esc(s.name) + '</div><div class="muted xs">' + money(s.price) + (s.priceNote ? '+' : '') + ' · ' + s.mins + ' min' + (s.active ? '' : ' · hidden from booking') + '</div></div>' +
+          '<div class="row-wrap s-move">' +
+            '<button class="round" data-act="mn-move" data-k="' + s.id + '" data-v="-1" aria-label="Move ' + esc(s.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+            '<button class="round" data-act="mn-move" data-k="' + s.id + '" data-v="1" aria-label="Move ' + esc(s.name) + ' down"' + (i === list.length - 1 ? ' disabled' : '') + '>↓</button>' +
+          '</div></div>' +
+        svcFields(key, d) +
+        '<label class="agree"><input type="checkbox" data-menu="' + esc(key) + '" name="active"' + (d.active ? ' checked' : '') + '><span>Show on the booking page</span></label>' +
+        msgLine(key) +
+        '<div class="row-wrap"><button class="btn-primary sm" data-act="mn-save" data-k="' + s.id + '"' + (dirty ? '' : ' disabled') + '>Save</button>' +
+          (dirty ? '<button class="link sm" data-act="mn-undo" data-k="' + s.id + '">Undo changes</button>' : '') +
+          '<button class="btn-text-danger sm s-push" data-act="mn-del" data-k="' + s.id + '">Delete</button></div>' +
+      '</li>';
+    }).join('');
+    var add = state.menuCat
+      ? '<li class="card form"><div class="b">Add a service to ' + esc(state.menuCat) + '</div>' + svcFields('svc:new', menuDraft('svc:new')) + msgLine('svc:new') +
+        '<button class="btn-primary" data-act="mn-add">Add service</button></li>'
+      : '<li class="card pad-sm muted sm">Add a category first.</li>';
+
+    return '<h1 class="h1">Menu</h1>' +
+      '<p class="muted sm">Changes show on the booking page the next time clients open it. Past bookings keep the service name and price they were booked with.</p>' +
+      '<div class="s-two"><section>' + catCard + '</section>' +
+      '<section class="s-lists"><div class="chips" role="toolbar" aria-label="Category to edit">' + chips + '</div>' +
+        '<ul class="stack">' + (list.length ? cards : '<li class="card pad-sm muted sm">No services in ' + esc(state.menuCat || '') + ' yet.</li>') + add + '</ul></section></div>';
+  }
+
+  function cleanService(d) {
+    var price = Math.round(parseFloat(d.price) * 100) / 100, mins = parseInt(d.mins, 10);
+    var name = String(d.name || '').trim().replace(/\s+/g, ' ');
+    if (!name) { return 'Please enter a service name.'; }
+    if (!(price >= 0 && price <= 10000)) { return 'Please enter a price.'; }
+    if (!(mins >= 5 && mins <= 600)) { return 'Minutes should be between 5 and 600.'; }
+    if (!d.cat) { return 'Please pick a category.'; }
+    return { name: name, price: price, mins: mins, cat: d.cat, priceNote: d.priceNote ? '+' : '', active: d.active !== false };
+  }
+
+  function afterMenuWrite(key, text) {
+    delete state.drafts[key];
+    if (text) { state.teamMsg[key] = { text: text }; } else { delete state.teamMsg[key]; }
+    return loadMenu();
+  }
+  function menuFail(key) {
+    return function (err) {
+      state.teamMsg[key] = { err: true, text: err && err.code === 'duplicate' ? err.message : 'Couldn’t save. Check your connection and try again.' };
+      render();
+    };
+  }
+
+  function saveSvc(id) {
+    var key = 'svc:' + id, s = svcById(id), c = cleanService(menuDraft(key));
+    if (typeof c === 'string') { state.teamMsg[key] = { err: true, text: c }; render(); return; }
+    state.teamMsg[key] = { text: 'Saving…' }; render();
+    API.saveService(Object.assign({}, s, c), false).then(function () {
+      if (c.cat !== state.menuCat) { state.menuCat = c.cat; }
+      return afterMenuWrite(key, 'Saved.');
+    }, menuFail(key));
+  }
+
+  function addSvc() {
+    var key = 'svc:new', c = cleanService(menuDraft(key));
+    if (typeof c === 'string') { state.teamMsg[key] = { err: true, text: c }; render(); return; }
+    // new services go at the end of their category
+    var inCat = state.menu.services.filter(function (s) { return s.cat === c.cat; });
+    var after = inCat.length ? inCat[inCat.length - 1].sort : state.menu.services.reduce(function (m, s) { return Math.max(m, s.sort); }, -1);
+    state.teamMsg[key] = { text: 'Adding…' }; render();
+    API.saveService(Object.assign({ sort: after + 1 }, c), true).then(function () {
+      state.menuCat = c.cat;
+      return afterMenuWrite(key, c.name + ' added.');
+    }, menuFail(key));
+  }
+
+  function deleteSvc(id) {
+    var s = svcById(id);
+    if (!confirm('Delete ' + s.name + '? Past bookings keep it. To take it off the booking page for now, untick "Show on the booking page" instead.')) { return; }
+    API.deleteService(s.id).then(function () { return afterMenuWrite('svc:' + id); }, menuFail('svc:' + id));
+  }
+
+  function moveSvc(id, dir) {
+    var all = state.menu.services.slice();
+    var s = svcById(id), inCat = all.filter(function (x) { return x.cat === s.cat; });
+    var j = inCat.indexOf(s) + dir;
+    if (j < 0 || j >= inCat.length) { return; }
+    var a = all.indexOf(s), b = all.indexOf(inCat[j]);
+    all[a] = inCat[j]; all[b] = s;
+    state.menu.services = all; render();
+    var saves = [];
+    all.forEach(function (x, k) { if (x.sort !== k) { saves.push(API.saveService(Object.assign({}, x, { sort: k }), false)); } });
+    Promise.all(saves).then(loadMenu, loadMenu);
+  }
+
+  function saveCatOrder(order, key, text) {
+    return API.saveCategories(order).then(function () { return afterMenuWrite(key, text); }, menuFail(key));
+  }
+
+  function catAction(act, name, dir) {
+    var cats = state.menu.categories.slice();
+    if (act === 'mn-cat-move') {
+      var i = cats.indexOf(name), j = i + dir;
+      cats[i] = cats[j]; cats[j] = name;
+      state.menu.categories = cats; render();
+      saveCatOrder(cats, 'cat:' + name);
+    } else if (act === 'mn-cat-del') {
+      saveCatOrder(cats.filter(function (c) { return c !== name; }), 'cat:' + name);
+    } else if (act === 'mn-cat-add') {
+      var nn = String(menuDraft('cat:new').name || '').trim();
+      if (!nn) { state.teamMsg['cat:new'] = { err: true, text: 'Please enter a category name.' }; render(); return; }
+      if (cats.some(function (c) { return c.toLowerCase() === nn.toLowerCase(); })) { state.teamMsg['cat:new'] = { err: true, text: nn + ' is already a category.' }; render(); return; }
+      state.menuCat = nn;
+      saveCatOrder(cats.concat(nn), 'cat:new', nn + ' added. Add its first service on the right.');
+    } else if (act === 'mn-cat-rename') {
+      var key = 'cat:' + name, to = String(menuDraft(key).name || '').trim();
+      if (!to) { state.teamMsg[key] = { err: true, text: 'Please enter a name.' }; render(); return; }
+      if (to !== name && cats.some(function (c) { return c.toLowerCase() === to.toLowerCase() && c !== name; })) { state.teamMsg[key] = { err: true, text: to + ' is already a category.' }; render(); return; }
+      API.renameCategory(name, to).then(function () {
+        if (state.menuCat === name) { state.menuCat = to; }
+        delete state.drafts[key]; delete state.teamMsg[key];
+        state.teamMsg['cat:' + to] = { text: 'Renamed.' };
+        return loadMenu();
+      }, menuFail(key));
+    }
+  }
+
   // ---------- sign-in ----------
   function viewAuth() {
     if (state.auth === 'checking') { return '<p class="muted center pad" role="status">Checking sign-in…</p>'; }
@@ -361,6 +550,7 @@ window.BuffAPI.ready.then(function () {
       render();
       if (state.auth === 'ok') {
         if (state.tab === 'team') { loadTeam(); }
+        if (state.tab === 'menu') { loadMenu(); }
         return load();
       }
     }, function () { state.auth = 'signin'; state.signInError = 'Couldn’t reach the server. Check your connection.'; render(); });
@@ -378,6 +568,7 @@ window.BuffAPI.ready.then(function () {
     }
 
     $('[data-tab="team"]').hidden = !isManager();
+    $('[data-tab="menu"]').hidden = !isManager();
     document.querySelectorAll('.s-tab').forEach(function (t) {
       var on = t.getAttribute('data-tab') === state.tab;
       t.classList.toggle('is-on', on);
@@ -393,7 +584,7 @@ window.BuffAPI.ready.then(function () {
     var main = $('#s-main');
     var sched = $('.s-sched');
     var keep = { top: sched ? sched.scrollTop : null, left: sched ? sched.scrollLeft : 0 };
-    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam }[state.tab]();
+    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu }[state.tab]();
     sched = $('.s-sched');
     if (sched) {
       if (keep.top !== null) { sched.scrollTop = keep.top; sched.scrollLeft = keep.left; }
@@ -411,6 +602,7 @@ window.BuffAPI.ready.then(function () {
   function setTab(tab) {
     state.tab = tab;
     if (tab === 'team' && !state.team) { loadTeam(); }
+    if (tab === 'menu' && !state.menu) { loadMenu(); }
     try { history.replaceState(null, '', '#' + tab); } catch (e) { /* file:// in some browsers */ }
     render();
     var h = $('#s-main h1');
@@ -447,6 +639,13 @@ window.BuffAPI.ready.then(function () {
       el.disabled = true;
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
+    else if (act === 'mn-pick') { state.menuCat = el.getAttribute('data-k'); render(); }
+    else if (act === 'mn-save') { saveSvc(el.getAttribute('data-k')); }
+    else if (act === 'mn-undo') { var mk = 'svc:' + el.getAttribute('data-k'); delete state.drafts[mk]; delete state.teamMsg[mk]; render(); }
+    else if (act === 'mn-add') { addSvc(); }
+    else if (act === 'mn-del') { deleteSvc(el.getAttribute('data-k')); }
+    else if (act === 'mn-move') { moveSvc(el.getAttribute('data-k'), +v); }
+    else if (/^mn-cat-/.test(act)) { catAction(act, el.getAttribute('data-k'), +v); }
     else if (act === 'tm-save') { saveTeam(el.getAttribute('data-id')); }
     else if (act === 'tm-undo') { var uid = el.getAttribute('data-id'); delete state.drafts[uid]; delete state.teamMsg[uid]; render(); }
     else if (act === 'tm-add') { addTeam(); }
@@ -467,6 +666,19 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('change', onFormInput);
   function onFormInput(e) {
     var t = e.target;
+    var mkey = t.getAttribute && t.getAttribute('data-menu');
+    if (mkey) {
+      var md = state.drafts[mkey] = Object.assign({}, menuBase(mkey), state.drafts[mkey]);
+      md[t.name] = t.type === 'checkbox' ? t.checked : t.value;
+      delete state.teamMsg[mkey];
+      if (e.type === 'change' && (t.type === 'checkbox' || t.tagName === 'SELECT')) { render(); }
+      else {
+        var box = t.closest('li, .card');
+        var sb = box && box.querySelector('[data-act="mn-save"], [data-act="mn-cat-rename"]');
+        if (sb) { sb.disabled = false; }
+      }
+      return;
+    }
     var tid = t.getAttribute && t.getAttribute('data-team');
     if (tid) {
       var base = tid === 'new' ? { name: '', initials: '', blurb: '', active: true } : draftFor(state.team.filter(function (x) { return x.id === tid; })[0]);
@@ -520,7 +732,7 @@ window.BuffAPI.ready.then(function () {
 
   function tabFromHash() {
     var t = (location.hash || '').slice(1);
-    return ['schedule', 'waitlist', 'timeoff', 'team'].indexOf(t) >= 0 ? t : null;
+    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu'].indexOf(t) >= 0 ? t : null;
   }
   window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab && state.auth === 'ok') { setTab(t); load(); } });
 

@@ -85,11 +85,31 @@
 .row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field select { height: 50px; border-radius: 10px; border: 1px solid var(--border); padding: 0 12px; font-size: 16px; font-family: inherit; background: #fff; color: var(--ink); }
-.s-two { display: grid; gap: 16px; align-items: start; }
+.s-two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.s-two > section { min-width: 0; }
 .s-lists { display: flex; flex-direction: column; gap: 10px; }
-@media (min-width: 860px) { .s-two { grid-template-columns: 380px 1fr; } }
+@media (min-width: 860px) { .s-two { grid-template-columns: 380px minmax(0, 1fr); } }
 .link-inline { border: none; background: none; padding: 0; font: inherit; color: var(--slate); text-decoration: underline; cursor: pointer; }
 .s-auth { max-width: 420px; margin: 24px auto 0; width: 100%; }
 .s-team-row { grid-template-columns: 90px 1fr; }
 .s-move .round { font-size: 18px; }
 .is-hidden-pro { opacity: .75; }
+.s-svc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.s-svc-row .field:last-child { grid-column: 1 / -1; }
+@media (min-width: 560px) { .s-svc-row { grid-template-columns: 110px 110px 1fr; } .s-svc-row .field:last-child { grid-column: auto; } }
+.s-cats { gap: 8px; }
+.s-cat { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.s-cat input { flex: 1; min-width: 120px; height: 44px; border-radius: 10px; border: 1px solid var(--border); padding: 0 10px; font-size: 16px; font-family: inherit; background: #fff; color: var(--ink); }
+.s-cat-n { min-width: 18px; text-align: center; }
+.s-cat .notice, .s-cat .muted.sm { flex-basis: 100%; }
+.s-cat-add { padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.s-push { margin-left: auto; }
+/* fields fill their grid cell instead of using the browser's default width */
+.field { min-width: 0; }
+.field input, .field select { width: 100%; min-width: 0; }
+@media (max-width: 559px) {
+  .s-tab { padding: 0 10px; font-size: 13px; }
+}
+.s-cats > li + li { padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.s-cat-n { min-width: 64px; }
+.s-cats .s-cat input { flex: 1 1 100%; }   /* name on its own line, buttons below */

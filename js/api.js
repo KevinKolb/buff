@@ -39,6 +39,8 @@
     db.timeOff = db.timeOff || [];
     db.sampleStatus = db.sampleStatus || {}; // status changes made to seeded sample appointments
     if (db.providers) { CFG.providers = db.providers.filter(function (p) { return p.active; }); } // edited on the Team tab
+    if (db.services) { CFG.services = db.services.filter(function (s) { return s.active; }); }    // edited on the Menu tab
+    if (db.categoryOrder) { CFG.categoryOrder = db.categoryOrder; }
   }
   sync();
   function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* keep working in memory */ } }
@@ -294,17 +296,75 @@
       return delay(p);
     },
 
+    // ======== menu (managers) ========
+
+    /** { services: every service incl. hidden, in order; categories: ordered names (may include empty ones) } */
+    listMenu: function () {
+      sync();
+      return delay(menuNow());
+    },
+
+    /** Creates (isNew: id assigned here) or updates a service: { id, cat, name, price, mins, priceNote, sort, active }. */
+    saveService: function (s, isNew) {
+      sync();
+      var list = allServices();
+      var clash = list.filter(function (x) { return x.name.toLowerCase() === s.name.toLowerCase() && x.id !== s.id; })[0];
+      if (clash) { return fail('duplicate', 'There’s already a service called ' + clash.name + '.'); }
+      if (isNew) { s.id = list.reduce(function (m, x) { return Math.max(m, x.id); }, 0) + 1; list.push(s); }
+      else { list = list.map(function (x) { return x.id === s.id ? Object.assign({}, x, s) : x; }); }
+      setServices(list);
+      return delay(s);
+    },
+
+    deleteService: function (id) {
+      sync();
+      setServices(allServices().filter(function (x) { return x.id !== id; }));
+      return delay(true);
+    },
+
+    /** Saves the category button order (names; may include categories with no services yet). */
+    saveCategories: function (order) {
+      sync();
+      db.categoryOrder = order.slice(); CFG.categoryOrder = db.categoryOrder; save();
+      return delay(true);
+    },
+
+    /** Renames a category on every service in it, and in the category order. */
+    renameCategory: function (from, to) {
+      sync();
+      setServices(allServices().map(function (x) { return x.cat === from ? Object.assign({}, x, { cat: to }) : x; }));
+      db.categoryOrder = menuNow().categories.map(function (c) { return c === from ? to : c; })
+        .filter(function (c, i, a) { return a.indexOf(c) === i; });
+      CFG.categoryOrder = db.categoryOrder; save();
+      return delay(true);
+    },
+
     /** Deletes everything saved in this browser (prototype only). */
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; save();
-      if (db.providers) { delete db.providers; save(); location.reload(); }
+      if (db.providers || db.services || db.categoryOrder) { delete db.providers; delete db.services; delete db.categoryOrder; save(); location.reload(); }
       return delay(true);
     },
   };
 
   function allProviders() {
     return clone(db.providers || CFG.providers.map(function (p, i) { return Object.assign({ sort: i, active: true }, p); }));
+  }
+
+  function allServices() {
+    return clone(db.services || CFG.services.map(function (s, i) { return Object.assign({ id: i + 1, sort: i, active: true }, s); }));
+  }
+  function setServices(list) {
+    db.services = list.sort(function (a, b) { return a.sort - b.sort; });
+    CFG.services = db.services.filter(function (x) { return x.active; });
+    save();
+  }
+  function menuNow() {
+    var services = allServices();
+    var order = (db.categoryOrder || CFG.categoryOrder || []).slice();
+    services.forEach(function (s) { if (order.indexOf(s.cat) < 0) { order.push(s.cat); } });
+    return { services: services, categories: order };
   }
 
   function isoToday() {

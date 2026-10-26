@@ -426,3 +426,10 @@ grant select on public.settings, public.business_hours, public.providers, public
 -- (staff only; managers for edits and time-off decisions).
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
+
+-- Order of the category buttons on the booking page, editable on the
+-- front desk's Menu tab. Categories not listed follow in menu order.
+alter table public.settings add column if not exists category_order text[] not null default '{}';
+update public.settings
+set category_order = array['Jewelry', 'Tanning', 'Hair', 'Wax', 'Nails', 'Face']
+where id = 1 and category_order = '{}';

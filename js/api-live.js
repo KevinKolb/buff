@@ -47,6 +47,21 @@
     return { id: r.id, providerId: r.provider_id, date: r.date, start: r.start_min, end: r.end_min, allDay: r.all_day, reason: r.reason, status: r.status };
   }
 
+  function fromServiceRow(v) {
+    return { id: v.id, cat: v.cat, name: v.name, price: +v.price, mins: v.mins, priceNote: v.price_note || '', sort: v.sort, active: v.active };
+  }
+  // keep this page's copy of the menu (CFG.services) in step after an edit
+  function refreshMenu() {
+    return sb.from('services').select('*').eq('active', true).order('sort').then(unwrap).then(function (rows) {
+      CFG.services = rows.map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } return o; });
+    });
+  }
+  // unwrap, but turn a unique-name clash into a readable message
+  function unwrapDupe(res) {
+    if (res.error && res.error.code === '23505') { throw Object.assign(new Error('There’s already a service with that name.'), { code: 'duplicate' }); }
+    return unwrap(res);
+  }
+
   function availability(dateISO, mins, providerId, guests) {
     return sb.rpc('get_availability', { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests }).then(unwrap).then(function (res) {
       res.slots.forEach(function (s) { s.label = mock.formatTime(toMin(s.time)); });
@@ -70,6 +85,7 @@
     CFG.booking.daysAhead = s.days_ahead;
     CFG.booking.minNoticeMinutes = s.min_notice_min;
     CFG.booking.maxGuests = s.max_guests;
+    if (s.category_order && s.category_order.length) { CFG.categoryOrder = s.category_order; }
     var hours = {};
     for (var d = 0; d < 7; d++) { hours[d] = null; }
     r[1].forEach(function (h) { hours[h.dow] = { open: h.open_time.slice(0, 5), close: h.close_time.slice(0, 5) }; });
@@ -213,6 +229,43 @@
         CFG.providers = rows.map(function (x) { return { id: x.id, name: x.name, initials: x.initials, blurb: x.blurb }; });
         return p;
       });
+    },
+
+    // ======== menu (managers) ========
+
+    listMenu: function () {
+      return Promise.all([
+        sb.from('services').select('*').order('sort').order('id').then(unwrap),
+        sb.from('settings').select('*').eq('id', 1).single().then(unwrap),
+      ]).then(function (r) {
+        var services = r[0].map(fromServiceRow);
+        var order = (r[1].category_order || CFG.categoryOrder || []).slice();
+        services.forEach(function (s) { if (order.indexOf(s.cat) < 0) { order.push(s.cat); } });
+        return { services: services, categories: order };
+      });
+    },
+
+    saveService: function (s, isNew) {
+      var row = { cat: s.cat, name: s.name, price: s.price, mins: s.mins, price_note: s.priceNote || null, sort: s.sort, active: s.active };
+      var q = isNew ? sb.from('services').insert(row) : sb.from('services').update(row).eq('id', s.id);
+      return q.select().single().then(unwrapDupe).then(function (r) { return refreshMenu().then(function () { return fromServiceRow(r); }); });
+    },
+
+    deleteService: function (id) {
+      return sb.from('services').delete().eq('id', id).then(unwrap).then(refreshMenu);
+    },
+
+    saveCategories: function (order) {
+      return sb.from('settings').update({ category_order: order }).eq('id', 1).then(unwrap).then(function () { CFG.categoryOrder = order.slice(); });
+    },
+
+    renameCategory: function (from, to) {
+      var api = this;
+      return sb.from('services').update({ cat: to }).eq('cat', from).then(unwrap).then(function () {
+        return api.listMenu();
+      }).then(function (m) {
+        return api.saveCategories(m.categories.map(function (c) { return c === from ? to : c; }).filter(function (c, i, a) { return a.indexOf(c) === i; }));
+      }).then(refreshMenu);
     },
 
     decideTimeOff: function (id, status) {
