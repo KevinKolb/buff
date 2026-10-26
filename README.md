@@ -101,6 +101,22 @@ What it will take:
 - **Payouts:** client payments go to the provider who did the work (a marketplace setup such as Stripe Connect), with any platform fee taken out.
 - **Trust:** license and insurance checks where required, reviews, and rules for disputes and no-shows.
 
+### To do: vet providers, and insurance through a partner
+
+**Vetting:** before a provider can be booked, collect and check their license and insurance.
+
+- **On the Team tab:** license type, number, state and expiration date, plus insurance company, policy number, coverage amounts and expiration date, with photos or PDFs of each.
+- **Checking:** confirm the license with the Louisiana State Board of Cosmetology lookup (or the provider's state, for the co-op), and that the insurance covers every service they're set up for.
+- **Staying current:** reminders to managers 30 days before anything expires; when a license or policy lapses, the provider is hidden from booking automatically until it's renewed.
+- **Records:** who checked what and when, kept with the provider. Documents are staff-only, stored privately (Supabase Storage with access rules), never on the public site.
+
+**Insurance partner:** team up with an insurance company so providers who don't have coverage can get it through us.
+
+- **What to offer:** professional and general liability for beauty pros (several insurers sell this to salons and independent stylists), ideally with the business named as additional insured.
+- **How it fits:** a "Get covered" link during provider sign-up, with the policy details filled in on the Team tab once bought.
+- **Business side:** a referral or partner agreement with the insurer. Selling or recommending insurance for a commission can require an insurance producer license, so check with a lawyer first.
+- **Later:** offer clients optional coverage, or require coverage levels for co-op providers.
+
 ### Someday: providers rate clients
 
 A "Rate My Professor" style rating, turned around: after a visit, the provider rates the client so the team knows who's a pleasure to book and who needs care.

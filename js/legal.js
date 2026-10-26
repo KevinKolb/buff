@@ -67,7 +67,8 @@ window.BuffLegal = [
   { cat: 'Platform, multiple businesses and the co-op', items: [
     { when: 'later', title: 'Contracts with businesses and providers', why: 'Once other businesses or independent providers use the software, terms are needed: fees, who owns client data, who is responsible for the work.', todo: 'Have a lawyer draft platform terms before the first outside business joins.' },
     { when: 'later', title: 'Handling other people’s money', why: 'Collecting payments for providers and paying them out can count as money transmission.', todo: 'Use a marketplace payments service (like Stripe Connect) instead of holding the money.' },
-    { when: 'later', title: 'Checking providers', why: 'Listing a provider who isn’t licensed or insured could create liability.', todo: 'Verify licenses and insurance when providers sign up, and re-check yearly.' },
+    { when: 'later', title: 'Checking providers', why: 'Listing a provider who isn’t licensed or insured could create liability.', todo: 'Verify licenses and insurance when providers sign up, and re-check yearly (see the provider vetting plan in the README).' },
+    { when: 'later', title: 'Partnering with an insurer', why: 'Earning a commission for selling or recommending insurance can require an insurance producer license.', todo: 'Have a lawyer review any insurance partner or referral agreement before offering coverage to providers.' },
     { when: 'later', title: 'Name and trademark', why: 'Using “Buff” for both the software and the salon, and possibly in other cities, could clash with others’ trademarks.', todo: 'Do a trademark search before branding the platform.' },
   ] },
 ];
