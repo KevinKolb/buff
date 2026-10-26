@@ -99,6 +99,19 @@ What it will take:
 - **Payouts:** client payments go to the provider who did the work (a marketplace setup such as Stripe Connect), with any platform fee taken out.
 - **Trust:** license and insurance checks where required, reviews, and rules for disputes and no-shows.
 
+### Someday: providers rate clients
+
+A "Rate My Professor" style rating, turned around: after a visit, the provider rates the client so the team knows who's a pleasure to book and who needs care.
+
+What it will take:
+
+- **Rating after the visit:** on the schedule, once an appointment is checked in (or marked no-show), the provider gives 1–5 stars plus quick tags (on time, late, no-show, great to work with, tips well, rude, haggled over price) and an optional note.
+- **Where it shows:** a client's average and recent tags in the front desk client picker and appointment sheet, so reservationists see it when booking.
+- **Private to staff:** clients never see ratings; database rules keep them to staff only. Clients may still have a right to ask what's stored about them, so keep notes factual and professional.
+- **Fairness:** one rating per visit per provider, editable for a short time; managers can remove a rating that's unfair or abusive. No-show and late counts come from the booking records, not just opinion.
+- **Using it (optional):** flag clients below a threshold so booking them asks for a deposit or card on file, once a card processor is set up.
+- **With the co-op:** across businesses, share only the facts (no-shows, late cancellations), never the notes, and only if the business agrees.
+
 ### Needs an account or a decision
 
 - **Email sender** (for example Resend): without it, clients and most staff can't get sign-in links. Once it's set up, gift cards and gift receipts should be emailed automatically (for now the confirmation page opens the buyer's own email app with the gift link filled in).
