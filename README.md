@@ -62,6 +62,14 @@ There's no login yet, so don't share the link widely.
 
 The site runs on Supabase (`backend` in `js/config.js`; setup in `supabase/SETUP.md`). Managers edit the menu, team, hours, booking rules, business details and closed days on the front desk. Clearing the two `backend` values switches back to demo mode (sample data, saved only in the browser).
 
+### To do: pick a name for the platform
+
+The booking software needs its own name, separate from Buff Beauty Bar (see below).
+
+- **Ideas so far:** Pick Me, I Got a Guy
+- **More to consider:** My Person, Book My Person, The Chair, Who Do You Use?
+- **Before choosing:** do a trademark search (USPTO), check the .com and short domains, and check Instagram and TikTok handles. The name should work for salons and for independent providers in the co-op.
+
 ### Planned: multiple businesses and locations
 
 The software will serve several businesses, each with one or more locations. Buff Beauty Bar is the first business. The software itself may also be called Buff, so keep the two names apart in code and copy: the platform versus a business on it.
