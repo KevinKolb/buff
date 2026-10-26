@@ -46,6 +46,7 @@
     if (db.business) { Object.assign(CFG.business, db.business); }          // Business tab
     if (db.hours) { CFG.hours = db.hours; }
     if (db.rules) { Object.assign(CFG.booking, db.rules); }
+    CFG.closedDates = db.closed || {};                                       // holidays: { 'YYYY-MM-DD': label }
   }
   sync();
   function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* keep working in memory */ } }
@@ -115,6 +116,7 @@
   function slotsFor(dateISO, mins, providerId, guests, services) {
     var hrs = hoursOn(dateISO);
     if (!hrs) { return { closed: true, slots: [] }; }
+    if ((CFG.closedDates || {})[dateISO] != null) { return { closed: true, slots: [], reason: CFG.closedDates[dateISO] }; }
     var busyMap = {};
     CFG.providers.forEach(function (p) { busyMap[p.id] = busyFor(p.id, dateISO); });
 
@@ -352,6 +354,24 @@
     saveHours: function (hours) { sync(); db.hours = clone(hours); CFG.hours = db.hours; save(); return delay(true); },
     saveRules: function (r) { sync(); db.rules = clone(r); Object.assign(CFG.booking, db.rules); save(); return delay(true); },
 
+    // ======== closed days (managers) ========
+
+    /** [{ date: 'YYYY-MM-DD', label }] from today on, soonest first. */
+    listClosedDates: function () {
+      sync();
+      var today = isoToday();
+      return delay(Object.keys(db.closed || {}).filter(function (d) { return d >= today; }).sort()
+        .map(function (d) { return { date: d, label: db.closed[d] }; }));
+    },
+    addClosedDate: function (date, label) {
+      sync(); db.closed = db.closed || {}; db.closed[date] = label || ''; CFG.closedDates = db.closed; save();
+      return delay(true);
+    },
+    removeClosedDate: function (date) {
+      sync(); if (db.closed) { delete db.closed[date]; } CFG.closedDates = db.closed || {}; save();
+      return delay(true);
+    },
+
     // ======== who does which services (managers) ========
 
     /** { providerId: [serviceId, ...] } for every provider. */
@@ -490,7 +510,7 @@
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; delete db.clientSession; save();
-      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; save(); location.reload(); }
+      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules || db.closed) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; delete db.closed; save(); location.reload(); }
       return delay(true);
     },
   };

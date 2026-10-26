@@ -26,7 +26,10 @@ window.BuffAPI.ready.then(function () {
     qdrafts: {},       // unsaved service ticks, by provider id
     qOpen: {},         // which providers' service lists are expanded
     settings: null,    // Business tab: { business, hours, rules, hasBusiness }
-    bizDraft: {},      // unsaved edits, by part: 'business' | 'hours' | 'rules'       // per-card status line, by provider id (and menu keys like 'svc:12')
+    bizDraft: {},      // unsaved edits, by part: 'business' | 'hours' | 'rules'
+    closed: [],        // upcoming closed days [{ date, label }]; null if the database can't store them yet
+    closedCounts: {},  // appointments already booked on each closed day
+    closedDraft: { date: '', label: '' },       // per-card status line, by provider id (and menu keys like 'svc:12')
     menu: null,        // { services, categories } for the managers' Menu tab
     menuCat: null,     // category being edited on the Menu tab
     auth: 'checking',  // checking → signin → sent | denied | ok
@@ -127,7 +130,10 @@ window.BuffAPI.ready.then(function () {
         }).join('') + '</ul></details>'
       : '';
 
+    var holiday = (CFG.closedDates || {})[state.date];
     return bar +
+      (holiday != null ? '<p class="notice s-closed">Closed' + (holiday ? ': ' + esc(holiday) : '') + '. No one can book this day' +
+        (live.length ? '. ' + live.length + ' appointment' + (live.length === 1 ? ' is' : 's are') + ' still on the schedule; move or cancel ' + (live.length === 1 ? 'it' : 'them') : '') + '.</p>' : '') +
       '<div class="s-sched" tabindex="0" aria-label="Schedule grid, scroll to see all providers">' +
         '<div class="s-grid" style="--cols:' + CFG.providers.length + '">' +
           '<div class="s-rail"><div class="s-colhead"></div><div class="s-railbody" style="height:' + height + 'px">' + rail + '</div></div>' +
@@ -683,6 +689,7 @@ window.BuffAPI.ready.then(function () {
 
   function loadSettings() {
     state.loadError = null;
+    loadClosed();
     return API.getSettings().then(function (s) {
       if (s.hasBusiness === undefined) { s.hasBusiness = true; }
       state.settings = s; render();
@@ -745,7 +752,91 @@ window.BuffAPI.ready.then(function () {
       '</section><section class="s-lists">' +
         bizCard('hours', 'Opening hours', '<div class="bz-days">' + rows + '</div>',
           '<p class="muted xs">Appointments already booked outside new hours stay on the schedule; move them if needed.</p>') +
+        viewClosed() +
       '</section></div>';
+  }
+
+  // ----- closed days (holidays) -----
+  function easter(y) { // anonymous Gregorian algorithm
+    var a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
+      g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4,
+      l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    return new Date(y, Math.floor((h + l - 7 * m + 114) / 31) - 1, ((h + l - 7 * m + 114) % 31) + 1);
+  }
+  function nthWeekday(y, month, dow, n) { // n-th weekday of a month; n = -1 for the last
+    var d;
+    if (n > 0) { d = new Date(y, month, 1); while (d.getDay() !== dow) { d.setDate(d.getDate() + 1); } d.setDate(d.getDate() + 7 * (n - 1)); }
+    else { d = new Date(y, month + 1, 0); while (d.getDay() !== dow) { d.setDate(d.getDate() - 1); } }
+    return d;
+  }
+  // common closures in the next 12 months that aren't marked yet
+  function holidaySuggestions() {
+    var out = [], today = isoDate(new Date()), limit = addDays(today, 365), y0 = new Date().getFullYear();
+    [y0, y0 + 1].forEach(function (y) {
+      var e = easter(y), mg = new Date(e); mg.setDate(e.getDate() - 47);
+      [[new Date(y, 0, 1), 'New Year’s Day'], [mg, 'Mardi Gras'], [e, 'Easter'], [nthWeekday(y, 4, 1, -1), 'Memorial Day'],
+       [new Date(y, 6, 4), 'Independence Day'], [nthWeekday(y, 8, 1, 1), 'Labor Day'], [nthWeekday(y, 10, 4, 4), 'Thanksgiving'],
+       [new Date(y, 11, 24), 'Christmas Eve'], [new Date(y, 11, 25), 'Christmas Day'], [new Date(y, 11, 31), 'New Year’s Eve']].forEach(function (h) {
+        var iso = isoDate(h[0]);
+        if (iso >= today && iso <= limit && !state.closed.some(function (c) { return c.date === iso; })) { out.push({ date: iso, label: h[1] }); }
+      });
+    });
+    return out.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  }
+
+  function viewClosed() {
+    if (state.closed === null) {
+      return '<div class="card form"><div class="b">Closed days</div><p class="notice">Marking holidays needs a database update (20261026001000_closed_dates.sql).</p></div>';
+    }
+    var nd = state.closedDraft;
+    var list = state.closed.length ? '<ul class="stack s-closed-list">' + state.closed.map(function (c) {
+      var n = state.closedCounts[c.date];
+      return '<li class="row-between"><div><div class="b sm">' + esc(fromISO(c.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })) + '</div>' +
+          '<div class="muted xs">' + esc(c.label || 'Closed') + (n ? ' · <button class="link-inline s-warn" data-act="to-view" data-v="' + esc(c.date) + '">' + n + ' booked, move them</button>' : '') + '</div></div>' +
+        '<button class="btn-text-danger sm" data-act="closed-remove" data-v="' + esc(c.date) + '">Reopen</button></li>';
+    }).join('') + '</ul>' : '<p class="muted sm">No closed days coming up.</p>';
+    var sugg = holidaySuggestions();
+    return '<div class="card form"><div class="b">Closed days</div>' +
+      '<p class="muted xs">Holidays and one-off closures. No one can book these days online or at the desk.</p>' +
+      '<div class="s-closed-add"><div class="field"><label for="cl-date">Date</label><input id="cl-date" type="date" min="' + isoDate(new Date()) + '" value="' + esc(nd.date) + '"></div>' +
+        '<div class="field"><label for="cl-label">Reason (optional)</label><input id="cl-label" type="text" maxlength="60" placeholder="Mardi Gras, staff training…" value="' + esc(nd.label) + '"></div></div>' +
+      msgLine('closed') +
+      '<button class="btn-primary sm" data-act="closed-add">Mark closed</button>' +
+      list +
+      (sugg.length ? '<div class="label">Common closures</div><div class="row-wrap">' + sugg.map(function (s) {
+        return '<button class="chip s-sugg" data-act="closed-sugg" data-v="' + esc(s.date) + '" data-k="' + esc(s.label) + '">+ ' + esc(s.label) + ' <span class="muted">' +
+          esc(fromISO(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })) + '</span></button>';
+      }).join('') + '</div>' : '') +
+    '</div>';
+  }
+
+  function loadClosed() {
+    return API.listClosedDates().then(function (list) {
+      state.closed = list; render();
+      // how many appointments are already on each closed day
+      list.forEach(function (c) {
+        API.listBookings(c.date).then(function (bs) {
+          state.closedCounts[c.date] = bs.filter(function (b) { return b.status !== 'cancelled'; }).length; render();
+        });
+      });
+    }, function () { state.closed = null; render(); });
+  }
+
+  function markClosed(date, label) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) { state.teamMsg.closed = { err: true, text: 'Pick a date.' }; render(); return; }
+    if (date < isoDate(new Date())) { state.teamMsg.closed = { err: true, text: 'Pick today or a later date.' }; render(); return; }
+    state.teamMsg.closed = { text: 'Saving…' }; render();
+    API.addClosedDate(date, String(label || '').trim()).then(function () {
+      state.closedDraft = { date: '', label: '' };
+      return API.listBookings(date).then(function (bs) {
+        var n = bs.filter(function (b) { return b.status !== 'cancelled'; }).length;
+        var when = fromISO(date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        state.teamMsg.closed = n
+          ? { err: true, text: when + ' is closed, but ' + n + ' appointment' + (n === 1 ? ' is' : 's are') + ' already booked that day. Move or cancel ' + (n === 1 ? 'it' : 'them') + ' from the schedule.' }
+          : { text: when + ' is marked closed.' };
+        return loadClosed();
+      });
+    }, function () { state.teamMsg.closed = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
   }
 
   function saveSettingsPart(part) {
@@ -908,6 +999,12 @@ window.BuffAPI.ready.then(function () {
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
     else if (act === 'reload-tab') { state.loadError = null; render(); if (state.tab === 'team') { loadTeam(); } else if (state.tab === 'business') { loadSettings(); } else { loadMenu(); } }
+    else if (act === 'closed-add') { markClosed(state.closedDraft.date, state.closedDraft.label); }
+    else if (act === 'closed-sugg') { markClosed(v, el.getAttribute('data-k')); }
+    else if (act === 'closed-remove') {
+      if (!confirm('Reopen ' + fromISO(v).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + '? Clients will be able to book it again.')) { return; }
+      API.removeClosedDate(v).then(function () { delete state.closedCounts[v]; state.teamMsg.closed = { text: 'Reopened.' }; return loadClosed(); });
+    }
     else if (act === 'biz-save') { saveSettingsPart(el.getAttribute('data-k')); }
     else if (act === 'biz-undo') { var bk = el.getAttribute('data-k'); delete state.bizDraft[bk]; delete state.teamMsg['biz:' + bk]; render(); }
     else if (act === 'q-save') { saveQuals(el.getAttribute('data-id')); }
@@ -952,6 +1049,8 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('change', onFormInput);
   function onFormInput(e) {
     var t = e.target;
+    if (t.id === 'cl-date') { state.closedDraft.date = t.value; delete state.teamMsg.closed; return; }
+    if (t.id === 'cl-label') { state.closedDraft.label = t.value; return; }
     var bpart = t.getAttribute && t.getAttribute('data-biz');
     if (bpart) {
       var bd = state.bizDraft[bpart] = state.bizDraft[bpart] || JSON.parse(JSON.stringify(state.settings[bpart]));

@@ -145,3 +145,4 @@ a.link { display: flex; align-items: center; justify-content: center; }
 .a-past .stack { margin-top: 8px; }
 .link-inline { border: none; background: none; padding: 0; font: inherit; color: var(--slate); text-decoration: underline; cursor: pointer; }
 .row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.day.is-holiday:disabled { text-decoration: none; opacity: .55; background: repeating-linear-gradient(135deg, #F7EEE8 0 6px, var(--cream) 6px 12px); }

@@ -132,7 +132,7 @@ window.BuffAPI.ready.then(function () {
     else if (able.length < state.guests) { body = '<p class="notice">Only ' + able.length + ' provider' + (able.length === 1 ? ' does' : 's do') + ' this, so you can book up to ' + able.length + ' guest' + (able.length === 1 ? '' : 's') + ' at once.</p>'; }
     else if (state.slotsLoading || !state.slots) { body = '<p class="muted sm" role="status">Finding open times…</p>'; }
     else if (state.slots.error) { body = '<p class="muted sm">Couldn’t load open times. <button class="link sm" data-act="retry">Try again</button></p>'; }
-    else if (state.slots.closed) { body = '<p class="muted sm">Closed this day.</p>'; }
+    else if (state.slots.closed) { body = '<p class="muted sm">Closed this day' + (state.slots.reason ? ': ' + esc(state.slots.reason) : '') + '.</p>'; }
     else {
       var open = state.slots.slots.filter(function (s) { return s.available; });
       body = open.length

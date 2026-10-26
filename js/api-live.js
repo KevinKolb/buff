@@ -84,6 +84,8 @@
     sb.from('services').select('*').eq('active', true).order('sort').then(unwrap),
     // who does which services; null if that table isn't set up yet (then no filtering)
     sb.from('provider_services').select('provider_id,service_id').then(function (res) { return res.error ? null : res.data; }),
+    // closed days from today on; empty if that table isn't set up yet
+    sb.from('closed_dates').select('date,label').gte('date', isoToday()).then(function (res) { return res.error ? [] : res.data; }),
   ]).then(function (r) {
     var s = r[0];
     CFG.booking.slotStepMinutes = s.slot_step_min;
@@ -99,6 +101,8 @@
     CFG.providers = r[2].map(function (p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb }; });
     CFG.services = r[3].map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } return o; });
     CFG.qualified = qualifiedFrom(r[4], r[3]);
+    CFG.closedDates = {};
+    r[5].forEach(function (c) { CFG.closedDates[c.date] = c.label || ''; });
   });
 
   // business details from settings (older databases don't have them: keep config.js values)
@@ -348,6 +352,18 @@
       return sb.from('settings').update({
         slot_step_min: r.slotStepMinutes, days_ahead: r.daysAhead, min_notice_min: r.minNoticeMinutes, max_guests: r.maxGuests,
       }).eq('id', 1).then(unwrap).then(function () { Object.assign(CFG.booking, r); return true; });
+    },
+
+    // ======== closed days (managers) ========
+
+    listClosedDates: function () {
+      return sb.from('closed_dates').select('date,label').gte('date', isoToday()).order('date').then(unwrap);
+    },
+    addClosedDate: function (date, label) {
+      return sb.from('closed_dates').upsert({ date: date, label: label || '' }).then(unwrap).then(function () { CFG.closedDates[date] = label || ''; return true; });
+    },
+    removeClosedDate: function (date) {
+      return sb.from('closed_dates').delete().eq('date', date).then(unwrap).then(function () { delete CFG.closedDates[date]; return true; });
     },
 
     // ======== who does which services (managers) ========

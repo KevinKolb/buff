@@ -185,3 +185,10 @@
 .bz-on { padding: 0; align-items: center; min-width: 130px; }
 .bz-times { display: flex; align-items: center; gap: 8px; }
 .bz-times input { height: 44px; border-radius: 10px; border: 1px solid var(--border); padding: 0 8px; font-size: 16px; font-family: inherit; background: #fff; color: var(--ink); width: 140px; }
+/* Business tab: closed days */
+.s-closed-add { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 560px) { .s-closed-add { grid-template-columns: 170px 1fr; } }
+.s-closed-list { gap: 0; }
+.s-closed-list li { padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.s-sugg { min-height: 40px; padding: 0 12px; font-size: 12px; letter-spacing: .02em; text-transform: none; }
+.s-closed { margin: 0; }

@@ -97,7 +97,7 @@ window.BuffAPI.ready.then(function () {
   function ensureDate() {
     if (state.date) { return; }
     var d = new Date();
-    for (var i = 0; i < 7 && !CFG.hours[d.getDay()]; i++) { d.setDate(d.getDate() + 1); }
+    for (var i = 0; i < 30 && (!CFG.hours[d.getDay()] || (CFG.closedDates || {})[isoDate(d)] != null); i++) { d.setDate(d.getDate() + 1); }
     state.date = isoDate(d);
   }
 
@@ -173,9 +173,10 @@ window.BuffAPI.ready.then(function () {
     var start = new Date(); start.setHours(0, 0, 0, 0);
     for (var i = 0; i < CFG.booking.daysAhead; i++) {
       var d = new Date(start); d.setDate(start.getDate() + i);
-      var iso = isoDate(d), closed = !CFG.hours[d.getDay()];
+      var iso = isoDate(d), holiday = (CFG.closedDates || {})[iso], closed = !CFG.hours[d.getDay()] || holiday != null;
       var on = iso === state.date;
-      days.push('<button class="day' + (on ? ' is-on' : '') + '" data-act="date" data-v="' + iso + '"' + (closed ? ' disabled aria-label="' + esc(longDate(iso)) + ', closed"' : ' aria-label="' + esc(longDate(iso)) + '"') + ' aria-pressed="' + on + '">' +
+      var why = holiday ? 'closed' + (holiday ? ' for ' + holiday : '') : 'closed';
+      days.push('<button class="day' + (on ? ' is-on' : '') + (holiday != null ? ' is-holiday' : '') + '" data-act="date" data-v="' + iso + '"' + (closed ? ' disabled title="' + esc(why) + '" aria-label="' + esc(longDate(iso)) + ', ' + esc(why) + '"' : ' aria-label="' + esc(longDate(iso)) + '"') + ' aria-pressed="' + on + '">' +
         '<span class="dow">' + (i === 0 ? 'TODAY' : d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()) + '</span>' +
         '<span class="dnum">' + d.getDate() + '</span>' +
         '<span class="mon">' + d.toLocaleDateString('en-US', { month: 'short' }) + '</span></button>');
@@ -189,7 +190,7 @@ window.BuffAPI.ready.then(function () {
     } else if (state.slots.error) {
       body = '<div class="center pad"><p class="muted">We couldn’t load open times. Check your connection.</p><button class="link" data-act="retry-slots">Try again</button></div>';
     } else if (state.slots.closed) {
-      body = '<p class="muted center pad">We’re closed this day.</p>';
+      body = '<p class="muted center pad">We’re closed this day' + (state.slots.reason ? ' (' + esc(state.slots.reason) + ')' : '') + '.</p>';
     } else {
       var avail = state.slots.slots.filter(function (s) { return s.available; });
       var groups = [['Morning', 0, 12 * 60], ['Afternoon', 12 * 60, 17 * 60], ['Evening', 17 * 60, 24 * 60]];
