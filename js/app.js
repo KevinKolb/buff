@@ -31,7 +31,15 @@ window.BuffAPI.ready.then(function () {
     notice: null,          // shown on step 3, e.g. when a time was just taken
   };
 
-  var STEP_LABELS = ['Services', 'Provider', 'Date & time', 'Your details'];
+  // Staff mode (index.html?for=staff): the front desk booking for a phone or
+  // walk-in client. Email optional, no card or policy checkbox, no minimum
+  // notice. The database checks the person really is staff.
+  var params = new URLSearchParams(location.search);
+  var STAFF = params.get('for') === 'staff';
+  var presetDate = params.get('date');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(presetDate || '') && presetDate >= isoDate(new Date())) { state.date = presetDate; }
+
+  var STEP_LABELS = ['Services', 'Provider', 'Date & time', STAFF ? 'Client details' : 'Your details'];
 
   // ---------- helpers ----------
   function $(sel) { return document.querySelector(sel); }
@@ -59,8 +67,15 @@ window.BuffAPI.ready.then(function () {
     return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
   }
 
-  function go(step) {
+  // Each step is a browser history entry, so the phone's Back button / swipe
+  // goes to the previous step instead of leaving the page.
+  function go(step, opts) {
+    opts = opts || {};
+    var from = state.step;
     state.step = step;
+    if (!opts.fromHistory) {
+      try { history[opts.replace || step === from ? 'replaceState' : 'pushState']({ buffStep: step }, ''); } catch (e) { /* ignore */ }
+    }
     render();
     var main = $('#main');
     main.scrollTop = 0;
@@ -74,11 +89,23 @@ window.BuffAPI.ready.then(function () {
     render();
     var t = totals();
     var reqDate = state.date;
-    API.getAvailability(reqDate, t.mins, state.provider, state.guests).then(function (res) {
+    API.getAvailability(reqDate, t.mins, state.provider, state.guests, STAFF).then(function (res) {
       if (reqDate !== state.date) { return; } // a newer request is in flight
       state.slots = res; state.slotsLoading = false;
       render();
+    }, function () {
+      if (reqDate !== state.date) { return; }
+      state.slots = { error: true, slots: [] }; state.slotsLoading = false;
+      render();
     });
+  }
+
+  // today, or the next day we're open
+  function ensureDate() {
+    if (state.date) { return; }
+    var d = new Date();
+    for (var i = 0; i < 7 && !CFG.hours[d.getDay()]; i++) { d.setDate(d.getDate() + 1); }
+    state.date = isoDate(d);
   }
 
   // ---------- step views ----------
@@ -94,7 +121,7 @@ window.BuffAPI.ready.then(function () {
         '<span class="tick">' + icon(on ? 'check' : 'plus') + '</span></button></li>';
     }).join('');
     return '' +
-      '<h1 class="h1">What are we doing today?</h1>' +
+      '<h1 class="h1">' + (STAFF ? 'What’s the client booking?' : 'What are we doing today?') + '</h1>' +
       '<div class="card row-between guests">' +
         '<div><div class="b">Who’s coming?</div><div class="muted sm">Up to ' + CFG.booking.maxGuests + ' people, same time</div></div>' +
         '<div class="stepper" role="group" aria-label="Number of guests">' +
@@ -119,7 +146,7 @@ window.BuffAPI.ready.then(function () {
         '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + '</span></span>' +
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
     }).join('');
-    return '<h1 class="h1">Who would you like?</h1>' +
+    return '<h1 class="h1">' + (STAFF ? 'Who would they like?' : 'Who would you like?') + '</h1>' +
       (state.guests > 1 ? '<p class="muted sm">With ' + state.guests + ' guests, your pick is for you — we’ll pair your guests with other pros working at the same time.</p>' : '') +
       '<ul class="stack">' + rows + '</ul>';
   }
@@ -142,6 +169,8 @@ window.BuffAPI.ready.then(function () {
       body = '<p class="muted center pad">Pick a day to see open times.</p>';
     } else if (state.slotsLoading || !state.slots) {
       body = '<p class="muted center pad" role="status">Finding open times…</p>';
+    } else if (state.slots.error) {
+      body = '<div class="center pad"><p class="muted">We couldn’t load open times. Check your connection.</p><button class="link" data-act="retry-slots">Try again</button></div>';
     } else if (state.slots.closed) {
       body = '<p class="muted center pad">We’re closed this day.</p>';
     } else {
@@ -158,7 +187,7 @@ window.BuffAPI.ready.then(function () {
       if (!avail.length) { body = '<p class="muted center pad">No openings this day for ' + totals().mins + ' minutes.</p>'; }
     }
 
-    var wl = state.date && state.slots && !state.slots.closed && !state.slotsLoading
+    var wl = !STAFF && state.date && state.slots && !state.slots.closed && !state.slots.error && !state.slotsLoading
       ? '<button class="ghost-dashed' + (state.waitlist ? ' is-on' : '') + '" data-act="waitlist" aria-pressed="' + state.waitlist + '">' + icon('clock') +
         (state.waitlist ? 'You’ll join the waitlist for ' + esc(longDate(state.date)) : 'Don’t see your time? Join the waitlist') + '</button>'
       : '';
@@ -180,15 +209,30 @@ window.BuffAPI.ready.then(function () {
   function summaryCard() {
     var t = totals();
     var when = state.waitlist ? longDate(state.date) + ' · waitlist' : longDate(state.date) + ' at ' + state.slot.label;
-    return '<div class="card summary"><div class="label">Your visit</div>' +
+    return '<div class="card summary"><div class="label">' + (STAFF ? 'Visit' : 'Your visit') + '</div>' +
       '<div class="b lg">' + esc(when) + '</div>' +
       '<div>' + esc(state.selected.join(' + ')) + '</div>' +
       '<div class="muted sm">' + esc(providerName(state.provider)) + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + ' · ' + money(t.price) + '</div></div>';
   }
 
+  var changeLink = '<button class="link sm change-link" data-act="change-time">Change date or time</button>';
+
+  function viewDetailsStaff() {
+    return '<h1 class="h1">Client details</h1>' + summaryCard() + changeLink +
+      '<form id="details" class="card form" novalidate>' +
+        field('name', 'Client name', 'text', 'off', 'First and last') +
+        field('phone', 'Mobile', 'tel', 'off', '(504) 555-0123', 'So we can reach them about the visit') +
+        field('email', 'Email (optional)', 'email', 'off', 'client@email.com') +
+        field('note', 'Note (optional)', 'text', 'off', 'Nail art idea, guest names…') +
+      '</form>' +
+      '<p class="muted xs">Let them know about the cancellation policy: cancellations within ' + CFG.business.cancellationWindowHours + ' hours or no-shows may be charged.</p>' +
+      (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
+  }
+
   function viewDetails() {
+    if (STAFF) { return viewDetailsStaff(); }
     var agreeErr = state.errors.agree;
-    return '<h1 class="h1">Almost done</h1>' + summaryCard() +
+    return '<h1 class="h1">Almost done</h1>' + summaryCard() + changeLink +
       '<form id="details" class="card form" novalidate>' +
         field('name', 'Name', 'text', 'name', 'First and last') +
         field('phone', 'Mobile', 'tel', 'tel', '(504) 555-0123', 'For your confirmation and reminder texts') +
@@ -207,7 +251,20 @@ window.BuffAPI.ready.then(function () {
       (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
   }
 
+  function viewDoneStaff() {
+    var r = state.result;
+    var back = 'staff.html?date=' + encodeURIComponent(state.date);
+    return '<div class="done">' +
+      '<div class="done-badge">' + icon('check') + '</div>' +
+      '<h1 class="h1 center">Booked for ' + esc(state.client.name.trim()) + '</h1>' +
+      '<p class="center muted">Read them their reference: <b>' + esc(r.id) + '</b>. They can use it with their mobile number to cancel online.</p>' +
+      summaryCard() +
+      '<a class="btn-primary as-link" href="' + back + '">Back to the schedule</a>' +
+      '<button class="link" data-act="restart">Book another client</button></div>';
+  }
+
   function viewDone() {
+    if (STAFF) { return viewDoneStaff(); }
     var r = state.result;
     var wl = state.waitlist;
     return '<div class="done">' +
@@ -259,7 +316,7 @@ window.BuffAPI.ready.then(function () {
       $('#foot-total').textContent = money(t.price);
       var btn = $('#next');
       btn.disabled = !canContinue();
-      btn.textContent = s === 4 ? (state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : 'Book now')) : 'Continue';
+      btn.textContent = s === 4 ? (state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : (STAFF ? 'Book for client' : 'Book now'))) : 'Continue';
     }
   }
 
@@ -283,10 +340,12 @@ window.BuffAPI.ready.then(function () {
     }
     else if (act === 'waitlist') { state.waitlist = !state.waitlist; if (state.waitlist) { state.slot = null; } render(); }
     else if (act === 'restart') {
-      state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {}; state.notice = null;
+      restart();
       go(1);
     }
     else if (act === 'ics') { downloadIcs(); }
+    else if (act === 'change-time') { state.errors = {}; stepBack(); }
+    else if (act === 'retry-slots') { loadSlots(); }
   });
 
   document.addEventListener('input', function (e) {
@@ -296,17 +355,36 @@ window.BuffAPI.ready.then(function () {
   });
   document.addEventListener('change', function (e) { if (e.target.id === 'f-agree') { state.client.agree = e.target.checked; } });
 
-  $('#back').addEventListener('click', function () { go(Math.max(1, state.step - 1)); });
+  function restart() {
+    state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {}; state.notice = null;
+    state.client = { name: '', phone: '', email: '', note: '', agree: false };
+  }
+
+  // On-screen back arrow: use the browser's history when the previous step is
+  // the entry behind us, so Back and the arrow always agree.
+  function stepBack() {
+    if (history.state && history.state.buffStep === state.step && state.step > 1) { history.back(); }
+    else { go(Math.max(1, state.step - 1), { replace: true }); }
+  }
+  $('#back').addEventListener('click', stepBack);
+
+  window.addEventListener('popstate', function (e) {
+    var s = (e.state && e.state.buffStep) || 1, asked = s;
+    if (state.step === 5) { // already booked: Back starts a fresh booking
+      restart(); go(1, { replace: true }); return;
+    }
+    if (s > 1 && !state.selected.length) { s = 1; }
+    if (s > 3 && !state.slot && !state.waitlist) { s = 3; }
+    if (asked === state.step && s > 1) { history.back(); return; } // duplicate entry (e.g. after "time was taken")
+    if (s !== asked) { try { history.replaceState({ buffStep: s }, ''); } catch (err) { /* ignore */ } }
+    go(s, { fromHistory: true });
+    if (s === 3 && !state.slots && !state.slotsLoading) { ensureDate(); loadSlots(); }
+  });
 
   $('#next').addEventListener('click', function () {
     if (!canContinue()) { return; }
     if (state.step === 2) {
-      // default to today-or-next-open day so times show immediately
-      if (!state.date) {
-        var d = new Date();
-        for (var i = 0; i < 7 && !CFG.hours[d.getDay()]; i++) { d.setDate(d.getDate() + 1); }
-        state.date = isoDate(d);
-      }
+      ensureDate(); // default to today-or-next-open day so times show immediately
       go(3); loadSlots(); return;
     }
     if (state.step === 4) { submit(); return; }
@@ -315,6 +393,13 @@ window.BuffAPI.ready.then(function () {
 
   function validate() {
     var c = state.client, e = {};
+    if (STAFF) {
+      if (c.name.trim().length < 2) { e.name = 'Please enter the client’s name.'; }
+      if (c.phone.replace(/\D/g, '').length < 10) { e.phone = 'Please enter a 10-digit mobile number.'; }
+      if (c.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.trim())) { e.email = 'That email doesn’t look right. Leave it blank if they don’t have one.'; }
+      state.errors = e;
+      return Object.keys(e).length === 0;
+    }
     if (c.name.trim().split(/\s+/).length < 2) { e.name = 'Please enter your first and last name.'; }
     if (c.phone.replace(/\D/g, '').length < 10) { e.phone = 'Please enter a 10-digit mobile number.'; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.trim())) { e.email = 'Please enter a valid email.'; }
@@ -337,12 +422,13 @@ window.BuffAPI.ready.then(function () {
       provider: state.provider, date: state.date,
       client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim() },
     };
+    var book = STAFF ? API.staffCreateBooking : API.createBooking;
     var p = state.waitlist ? API.joinWaitlist(payload)
-      : API.createBooking(Object.assign(payload, { time: state.slot.time, providerIds: state.slot.providerIds }));
+      : book.call(API, Object.assign(payload, { time: state.slot.time, providerIds: state.slot.providerIds }));
     p.then(function (res) { state.submitting = false; state.result = res; go(5); }, function (err) {
       state.submitting = false;
-      if (err.code === 'taken') { state.notice = 'Sorry, that time was just booked. Please pick another.'; go(3); loadSlots(); return; }
-      state.errors = { form: 'Something went wrong. Please try again or call us.' }; render();
+      if (err.code === 'taken') { state.notice = 'Sorry, that time was just booked. Please pick another.'; go(3, { replace: true }); loadSlots(); return; }
+      state.errors = { form: STAFF && err.code === 'not_staff' ? 'You’re not signed in as staff. Sign in at the front desk, then try again.' : 'Something went wrong. Please try again or call us.' }; render();
     });
   }
 
@@ -364,5 +450,28 @@ window.BuffAPI.ready.then(function () {
 
   $('#call').href = CFG.business.phoneHref;
   $('#call').setAttribute('aria-label', 'Call ' + CFG.business.name + ' at ' + CFG.business.phone);
-  render();
+
+  function start() {
+    try { history.replaceState({ buffStep: 1 }, ''); } catch (e) { /* ignore */ }
+    render();
+  }
+
+  if (!STAFF) { start(); return; }
+
+  // Staff mode: banner back to the front desk, and only for signed-in staff.
+  document.title = 'Book for a client · Buff Beauty Bar';
+  var bar = document.createElement('div');
+  bar.className = 'staff-bar';
+  bar.innerHTML = '<span>Front desk booking</span><a href="staff.html' + (state.date ? '?date=' + state.date : '') + '">‹ Back to schedule</a>';
+  $('#progress').parentNode.insertBefore(bar, $('#progress'));
+  $('#progress').hidden = true; $('#footer').hidden = true;
+  $('#main').innerHTML = '<p class="muted center pad" role="status">Checking sign-in…</p>';
+  API.getStaff().then(function (s) {
+    if (s && s.role) { start(); return; }
+    $('#main').innerHTML = '<div class="card form"><h1 class="h1">Staff sign-in needed</h1>' +
+      '<p>Booking for a client is only for staff. Sign in at the front desk first, then tap <b>+ New booking</b>.</p>' +
+      '<a class="btn-primary as-link" href="staff.html">Go to the front desk</a></div>';
+  }, function () {
+    $('#main').innerHTML = '<p class="notice" role="alert">Couldn’t check your sign-in. Check your connection and refresh.</p>';
+  });
 });

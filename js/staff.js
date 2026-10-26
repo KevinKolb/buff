@@ -8,7 +8,10 @@ window.BuffAPI.ready.then(function () {
 
   var state = {
     tab: 'schedule',
-    date: isoDate(new Date()),
+    date: (function () { // staff.html?date=YYYY-MM-DD opens that day (e.g. after booking a phone client)
+      var d = new URLSearchParams(location.search).get('date');
+      return /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : isoDate(new Date());
+    })(),
     bookings: [],
     timeOff: [],       // for the schedule day
     waitlist: [],
@@ -146,7 +149,7 @@ window.BuffAPI.ready.then(function () {
         '<div class="muted sm">' + esc(who) + (b.guests > 1 ? ' · ' + b.guests + ' guests' : '') + ' · ' + money(b.total || 0) + '</div>' +
         (contact ? '<div class="sm">' + contact + '</div>' : '') +
         (c.note ? '<div class="card pad-sm sm"><span class="b">Note:</span> ' + esc(c.note) + '</div>' : '') +
-        '<div class="muted xs">' + (b.sample ? 'Sample appointment' : 'Booked online · ' + esc(b.id)) + '</div>' +
+        '<div class="muted xs">' + (b.sample ? 'Sample appointment' : (b.bookedBy ? 'Booked by ' + esc(b.bookedBy) : 'Booked online') + ' · ' + esc(b.id)) + '</div>' +
       '</div>' +
       '<div class="sheet-actions" data-id="' + esc(b.id) + '">' + actions + '</div>';
   }
@@ -559,6 +562,7 @@ window.BuffAPI.ready.then(function () {
   // ---------- render ----------
   function render() {
     var signedIn = state.auth === 'ok';
+    $('.s-book').href = 'index.html?for=staff&date=' + encodeURIComponent(state.date);
     $('.s-tabs').hidden = !signedIn;
     $('.proto-note').hidden = !signedIn;
     $('#signout').hidden = !signedIn || API.mode !== 'live';

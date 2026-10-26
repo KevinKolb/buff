@@ -107,7 +107,7 @@
     return true;
   }
 
-  function slotsFor(dateISO, mins, providerId, guests) {
+  function slotsFor(dateISO, mins, providerId, guests, staff) {
     var hrs = hoursOn(dateISO);
     if (!hrs) { return { closed: true, slots: [] }; }
     var busyMap = {};
@@ -116,7 +116,7 @@
     var now = new Date(), d = new Date(dateISO + 'T00:00:00');
     var isToday = now.toDateString() === d.toDateString();
     var earliest = d < new Date(now.toDateString()) ? Infinity
-      : isToday ? now.getHours() * 60 + now.getMinutes() + CFG.booking.minNoticeMinutes : 0;
+      : isToday ? now.getHours() * 60 + now.getMinutes() + (staff ? 0 : CFG.booking.minNoticeMinutes) : 0;
 
     var slots = [];
     for (var t = hrs.open; t + mins <= hrs.close; t += CFG.booking.slotStepMinutes) {
@@ -148,11 +148,12 @@
      * @param {number} mins     total visit length per guest
      * @param {string} providerId provider id or 'any'
      * @param {number} guests   1..maxGuests (each guest needs their own provider at the same time)
+     * @param {boolean} [staff] booking at the front desk: no minimum notice
      * @returns {Promise<{closed:boolean, slots:Array<{time:string,label:string,available:boolean,providerIds:string[]}>}>}
      */
-    getAvailability: function (dateISO, mins, providerId, guests) {
+    getAvailability: function (dateISO, mins, providerId, guests, staff) {
       sync();
-      return delay(slotsFor(dateISO, mins, providerId, guests));
+      return delay(slotsFor(dateISO, mins, providerId, guests, staff));
     },
 
     /**
@@ -168,6 +169,17 @@
       rec.start = start;
       db.bookings.push(rec); save();
       return delay(rec);
+    },
+
+    /** Front desk books for a phone or walk-in client: email optional, no minimum notice. */
+    staffCreateBooking: function (payload) {
+      var api = this;
+      return api.createBooking(payload).then(function (rec) {
+        sync();
+        var b = db.bookings.filter(function (x) { return x.id === rec.id; })[0];
+        b.bookedBy = 'demo'; save();
+        return clone(b);
+      });
     },
 
     /** Adds the client to the waitlist for a date. Real version: POST /api/waitlist. */

@@ -33,7 +33,7 @@
     return {
       id: r.id, date: r.date, start: r.start_min, time: hhmm(r.start_min), mins: r.mins,
       provider: r.provider_pref, providerIds: r.provider_ids, services: r.services, guests: r.guests,
-      total: +r.total, status: r.status, cancelledBy: r.cancelled_by, createdAt: r.created_at,
+      total: +r.total, status: r.status, cancelledBy: r.cancelled_by, createdAt: r.created_at, bookedBy: r.booked_by,
       client: { name: r.client_name, phone: r.client_phone, email: r.client_email, note: r.note },
     };
   }
@@ -62,8 +62,10 @@
     return unwrap(res);
   }
 
-  function availability(dateISO, mins, providerId, guests) {
-    return sb.rpc('get_availability', { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests }).then(unwrap).then(function (res) {
+  function availability(dateISO, mins, providerId, guests, staff) {
+    var args = { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests };
+    if (staff) { args.p_staff = true; } // front desk: no minimum notice (checked again by the database)
+    return sb.rpc('get_availability', args).then(unwrap).then(function (res) {
       res.slots.forEach(function (s) { s.label = mock.formatTime(toMin(s.time)); });
       return res;
     });
@@ -115,6 +117,10 @@
 
     createBooking: function (payload) {
       return sb.rpc('create_booking', { p: payload }).then(unwrap).then(toBooking);
+    },
+
+    staffCreateBooking: function (payload) {
+      return sb.rpc('staff_create_booking', { p: payload }).then(unwrap).then(toBooking);
     },
 
     joinWaitlist: function (payload) {
