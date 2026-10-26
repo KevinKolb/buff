@@ -29,7 +29,7 @@ window.BuffAPI.ready.then(function () {
     slot: null,
     day: null,          // { bookings, timeOff } for state.date
     picked: null,       // appointment tapped on the day schedule
-    client: { name: '', phone: '', email: '', note: '', staffNote: '' },
+    client: { name: '', phone: '', email: '', note: '', staffNote: '', occasion: '' },
     clients: null,      // every client, for the picker
     clientId: null,     // picked existing client
     clientQuery: '',
@@ -220,7 +220,7 @@ window.BuffAPI.ready.then(function () {
     var c = (state.clients || []).filter(function (x) { return x.id === id; })[0];
     if (!c) { return; }
     state.clientId = c.id; state.clientQuery = '';
-    state.client = { name: c.name || '', phone: c.phone || '', email: c.email || '', note: '', staffNote: c.staffNote || '' };
+    state.client = { name: c.name || '', phone: c.phone || '', email: c.email || '', note: '', staffNote: c.staffNote || '', occasion: state.client.occasion || '' };
     state.errors = {};
     render();
     var f = $('#bk-name'); if (f) { f.focus(); }
@@ -255,6 +255,7 @@ window.BuffAPI.ready.then(function () {
         '<div class="field"><label for="bk-staffNote">Client notes (staff only)</label>' +
           '<textarea id="bk-staffNote" name="staffNote" rows="2" placeholder="Allergies, preferences… Saved on their record, never shown to the client.">' + esc(state.client.staffNote) + '</textarea></div>' +
       '</form>' +
+      BuffOccasion.picker(state.client.occasion, 'Celebrating something? (ask them)') +
       '<div class="bk-card"><div class="row-between"><span class="b sm">Card on file</span><span class="muted xs">Encrypted</span></div>' +
         '<div class="card-mock" aria-label="Card details (coming soon)"><span>Card number · MM/YY · CVC</span></div>' +
         '<p class="muted xs">Card entry connects once the card processor is set up.</p></div>' +
@@ -399,7 +400,7 @@ window.BuffAPI.ready.then(function () {
     API.staffCreateBooking({
       services: state.selected.slice(), guests: state.guests, mins: t.mins, total: t.price,
       provider: state.provider, date: state.date, time: state.slot.time, providerIds: state.slot.providerIds,
-      policyAgreed: true, clientId: state.clientId || undefined,
+      policyAgreed: true, clientId: state.clientId || undefined, occasion: state.client.occasion.trim(),
       client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim(), staffNote: state.client.staffNote.trim() },
     }).then(function (rec) {
       state.submitting = false; state.result = rec; state.errors = {};
@@ -450,19 +451,28 @@ window.BuffAPI.ready.then(function () {
     else if (act === 'book') { book(); }
     else if (act === 'pick-client') { pickClient(v); }
     else if (act === 'new-client') {
-      state.clientId = null; state.client = { name: '', phone: '', email: '', note: '', staffNote: '' }; state.errors = {};
+      state.clientId = null; state.client = { name: '', phone: '', email: '', note: '', staffNote: '', occasion: '' }; state.errors = {};
       render(); var q = $('#bk-find'); if (q) { q.focus(); }
     }
     else if (act === 'another') {
       state.result = null; state.selected = []; state.guests = 1; state.provider = 'any'; state.slot = null; state.slots = null;
-      state.client = { name: '', phone: '', email: '', note: '', staffNote: '' }; state.policy = false; state.errors = {};
+      state.client = { name: '', phone: '', email: '', note: '', staffNote: '', occasion: '' }; state.policy = false; state.errors = {};
       state.clientId = null; state.clientQuery = '';
       render(); window.scrollTo(0, 0);
     }
   });
 
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('[data-occ]');
+    if (!c) { return; }
+    state.client.occasion = BuffOccasion.toggle(state.client.occasion, c.getAttribute('data-occ'));
+    render();
+    var other = document.getElementById('occ-other'); if (other && !other.value) { other.focus(); }
+  });
+
   document.addEventListener('input', function (e) {
     var t = e.target;
+    if (t.id === 'occ-other') { state.client.occasion = t.value || ' '; return; }
     if (t.form && t.form.id === 'bk-form' && t.name) { state.client[t.name] = t.value; }
     if (t.id === 'bk-find') { state.clientQuery = t.value; state.matchIdx = 0; $('#bk-matches').innerHTML = matchList(); } // only the list, so typing isn't interrupted
   });

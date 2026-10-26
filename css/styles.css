@@ -219,3 +219,8 @@ a.link { display: flex; align-items: center; justify-content: center; }
 .cal-opt .xs { font-weight: 400; }
 .cal-wrap.is-compact { margin-top: 6px; }
 .cal-wrap.is-compact .cal-btn { min-height: 44px; font-size: 14px; }
+
+/* "Celebrating something?" */
+.occ { display: flex; flex-direction: column; gap: 10px; }
+.occ-chips { padding: 0; }
+.occ-chip { min-height: 40px; padding: 0 14px; font-size: 12px; letter-spacing: .04em; text-transform: none; }

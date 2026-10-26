@@ -26,6 +26,9 @@ window.BUFF_CONFIG = {
   // here follow in menu order.
   categoryOrder: ['Jewelry', 'Tanning', 'Hair', 'Wax', 'Nails', 'Face'],
 
+  // "Celebrating something?" choices on the booking pages (all optional).
+  occasions: ['Birthday', 'Bridal / wedding', 'Bachelorette', 'Anniversary', 'Graduation', 'Prom / formal', 'Date night', 'Photoshoot'],
+
   booking: {
     maxGuests: 3,          // group bookings in v1: up to 3 people
     slotStepMinutes: 15,   // start times offered every 15 minutes

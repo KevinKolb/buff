@@ -24,7 +24,7 @@ window.BuffAPI.ready.then(function () {
     waitlist: false,
     slotsLoading: false,
     slots: null,           // result of getAvailability
-    client: { name: '', phone: '', email: '', note: '', agree: false },
+    client: { name: '', phone: '', email: '', note: '', agree: false, occasion: '' },
     errors: {},
     submitting: false,
     result: null,
@@ -361,6 +361,7 @@ window.BuffAPI.ready.then(function () {
           : field('email', 'Email', 'email', 'email', 'you@email.com', '<a href="account.html">Have an account? Sign in</a> to fill this in next time.')) +
         field('note', 'Note (optional)', 'text', '', 'Requests, guest names…') +
       '</form>' +
+      (state.waitlist ? '' : '<div class="card form">' + BuffOccasion.picker(state.client.occasion) + '</div>') +
       (state.waitlist ? '' :
       '<div class="card form">' +
         '<div class="row-between"><span class="b sm">Card on file</span><span class="muted xs">Encrypted</span></div>' +
@@ -475,8 +476,17 @@ window.BuffAPI.ready.then(function () {
     else if (act === 'retry-slots') { loadSlots(); }
   });
 
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('[data-occ]');
+    if (!c) { return; }
+    state.client.occasion = BuffOccasion.toggle(state.client.occasion, c.getAttribute('data-occ'));
+    render();
+    var other = document.getElementById('occ-other'); if (other && !other.value) { other.focus(); }
+  });
+
   document.addEventListener('input', function (e) {
     var t = e.target;
+    if (t.id === 'occ-other') { state.client.occasion = t.value || ' '; return; }
     if (t.form && t.form.id === 'details' && t.name) { state.client[t.name] = t.value; }
     if (t.id === 'f-agree') { state.client.agree = t.checked; }
   });
@@ -485,7 +495,7 @@ window.BuffAPI.ready.then(function () {
   function restart() {
     dropHold();
     state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {}; state.notice = null;
-    state.client = { name: '', phone: '', email: '', note: '', agree: false };
+    state.client = { name: '', phone: '', email: '', note: '', agree: false, occasion: '' };
   }
 
   // On-screen back arrow: use the browser's history when the previous step is
@@ -540,7 +550,8 @@ window.BuffAPI.ready.then(function () {
     var t = totals();
     var payload = {
       services: state.selected.slice(), guests: state.guests, mins: t.mins, total: t.price,
-      provider: state.provider, date: state.date, policyAgreed: !!state.client.agree, holdToken: state.hold ? holdToken : undefined,
+      provider: state.provider, date: state.date, policyAgreed: !!state.client.agree, holdToken: holdToken, // always: the hold may still be on its way when they tap Book (slow signal)
+      occasion: state.client.occasion.trim(),
       client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim() },
     };
     var p = state.waitlist ? API.joinWaitlist(payload)

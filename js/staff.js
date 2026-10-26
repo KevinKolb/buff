@@ -110,7 +110,8 @@ window.BuffAPI.ready.then(function () {
       live.filter(function (b) { return b.providerIds.indexOf(p.id) >= 0; }).forEach(function (b) {
         var h = b.mins * PX - 2;
         blocks += '<button class="s-appt is-' + b.status + (b.sample ? ' is-sample' : '') + (h < 60 ? ' is-short' : '') + '" data-act="appt" data-v="' + esc(b.id) + '" style="top:' + ((b.start - hrs.open) * PX) + 'px;height:' + h + 'px">' +
-          '<span class="s-appt-time">' + fmt(b.start) + (b.status === 'arrived' ? ' · In' : b.status === 'no-show' ? ' · No-show' : '') + '</span>' +
+          '<span class="s-appt-time">' + fmt(b.start) + (b.status === 'arrived' ? ' · In' : b.status === 'no-show' ? ' · No-show' : '') +
+            (b.occasion && b.occasion.trim() ? ' <span class="s-occ">' + esc(b.occasion.trim()) + '</span>' : '') + '</span>' +
           '<span class="s-appt-name">' + esc(b.client.name) + (b.guests > 1 ? ' +' + (b.guests - 1) : '') + '</span>' +
           '<span class="s-appt-svc">' + esc(b.services.join(', ')) + '</span></button>';
       });
@@ -165,6 +166,7 @@ window.BuffAPI.ready.then(function () {
         '<div class="muted sm">' + esc(who) + (b.guests > 1 ? ' · ' + b.guests + ' guests' : '') + ' · ' + money(b.total || 0) + '</div>' +
         (contact ? '<div class="sm">' + contact + '</div>' : '') +
         (c.note ? '<div class="card pad-sm sm"><span class="b">Note:</span> ' + esc(c.note) + '</div>' : '') +
+        (b.occasion && b.occasion.trim() ? '<div class="s-occ-line">Celebrating: <b>' + esc(b.occasion.trim()) + '</b></div>' : '') +
         '<div class="muted xs">' + (b.sample ? 'Sample appointment' : (b.bookedBy ? 'Booked by ' + esc(b.bookedBy) : 'Booked online') + ' · ' + esc(b.id)) + '</div>' +
       '</div>' +
       '<div class="sheet-actions" data-id="' + esc(b.id) + '">' + actions + '</div>';
