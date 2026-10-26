@@ -19,7 +19,7 @@ window.BuffAPI.ready.then(function () {
     selected: [],          // service names
     guests: 1,
     provider: 'any',
-    place: null,           // place id picked on step 2 (only asked when there's more than one)
+    place: null,           // place id picked on step 4 (only asked when the time is open at more than one)
     date: null,            // 'YYYY-MM-DD'
     slot: null,            // { time, label, providerIds }
     waitlist: false,
@@ -35,7 +35,7 @@ window.BuffAPI.ready.then(function () {
     gift: { recipientName: '', recipientEmail: '', from: '', message: '', delivery: 'recipient' }, // provider 'gift': buying a gift card
   };
 
-  var STEP_LABELS = ['Booking', 'Provider', 'Date & time', 'Your details'];
+  var STEP_LABELS = ['Booking', 'Provider', 'Date & time', 'Where', 'Your details'];
 
   // ---------- helpers ----------
   function $(sel) { return document.querySelector(sel); }
@@ -70,16 +70,32 @@ window.BuffAPI.ready.then(function () {
   // ----- places: where the visit is (see places.js) -----
   var PL = window.BuffPlaces;
   function placeChoices() { return PL && state.selected.length ? PL.forServices(state.selected, API.canDo) : []; }
-  function needsPlace() { return !isGift() && placeChoices().length > 1; }
   function sameId(a, b) { return a != null && b != null && String(a) === String(b); }
-  /** The place for this visit: picked, or the only one that fits; null if they still need to pick. */
-  function placeId() {
+  /** Places this visit could be at: where a provider who does these services (the one picked, if any) works. */
+  function candidatePlaces() {
     var ch = placeChoices();
-    if (state.place != null && ch.some(function (id) { return sameId(id, state.place); })) { return state.place; }
-    if (state.provider !== 'any' && state.provider !== 'gift' && PL) {
-      var theirs = ch.filter(function (id) { return PL.worksThere(state.provider, id); });
-      if (theirs.length === 1) { return theirs[0]; }
+    if (PL && state.provider !== 'any' && state.provider !== 'gift') { ch = ch.filter(function (id) { return PL.worksThere(state.provider, id); }); }
+    return ch;
+  }
+  /** Places where this time is open (times carry byPlace when more than one place was checked). */
+  function slotPlaces(slot) {
+    if (!slot) { return []; }
+    var c = candidatePlaces();
+    if (slot.byPlace) { return c.filter(function (id) { return slot.byPlace[id]; }); }
+    return c.length === 1 ? c : [];
+  }
+  function wherePossible() { return !isGift() && candidatePlaces().length > 1; }
+  /** Step 4 (Where) is needed when the picked time is open at more than one place. */
+  function needsWhere() { return !isGift() && !state.waitlist && !!state.slot && slotPlaces(state.slot).length > 1; }
+  /** The place for this visit: the only one that fits, or the one picked on step 4; null if still to pick. */
+  function placeId() {
+    if (state.slot && !state.waitlist) {
+      var sp = slotPlaces(state.slot);
+      if (sp.length === 1) { return sp[0]; }
+      return sp.some(function (id) { return sameId(id, state.place); }) ? state.place : null;
     }
+    var ch = candidatePlaces();
+    if (ch.some(function (id) { return sameId(id, state.place); })) { return state.place; }
     return ch.length === 1 ? ch[0] : null;
   }
   function showPlace() { return !!(PL && PL.several()); }
@@ -158,8 +174,8 @@ window.BuffAPI.ready.then(function () {
   function holdSlot(slot) {
     var want = { token: holdToken, date: state.date, time: slot.time, provider: state.provider, guests: state.guests, services: state.selected.slice(), place: placeId() };
     API.holdSlot(want).then(function (r) {
-      if (!state.slot || state.slot.time !== want.time || state.date !== want.date) { return; } // they picked something else meanwhile
-      state.hold = { date: want.date, time: want.time, label: slot.label, expiresAt: r.expiresAt };
+      if (!state.slot || state.slot.time !== want.time || state.date !== want.date || !sameId(placeId(), want.place)) { return; } // they picked something else meanwhile
+      state.hold = { date: want.date, time: want.time, label: slot.label, expiresAt: r.expiresAt, place: want.place };
       state.slot.providerIds = r.providerIds;
       clearTimeout(holdTimer);
       holdTimer = setTimeout(render, r.expiresAt - Date.now() + 500); // show that the hold ended
@@ -246,15 +262,34 @@ window.BuffAPI.ready.then(function () {
     render();
     var t = totals();
     var reqDate = state.date;
-    API.getAvailability(reqDate, t.mins, state.provider, state.guests, state.selected, null, placeId()).then(function (res) {
+    // more than one place possible: check each, and keep which places each time is open at (step 4)
+    var places = candidatePlaces();
+    var calls = (places.length > 1 ? places : [places.length ? places[0] : null]).map(function (id) {
+      return API.getAvailability(reqDate, t.mins, state.provider, state.guests, state.selected, null, id);
+    });
+    Promise.all(calls).then(function (rs) {
       if (reqDate !== state.date) { return; } // a newer request is in flight
-      state.slots = res; state.slotsLoading = false;
+      state.slots = places.length > 1 ? mergeSlots(rs, places) : rs[0]; state.slotsLoading = false;
       render();
     }, function () {
       if (reqDate !== state.date) { return; }
       state.slots = { error: true, slots: [] }; state.slotsLoading = false;
       render();
     });
+  }
+
+  function mergeSlots(rs, places) {
+    var base = rs.filter(function (r) { return !r.closed; })[0];
+    if (!base) { return rs[0]; }
+    return { closed: false, slots: base.slots.map(function (s) {
+      var byPlace = {}, first = null;
+      rs.forEach(function (r, i) {
+        if (r.closed) { return; }
+        var x = r.slots.filter(function (y) { return y.time === s.time; })[0];
+        if (x && x.available) { byPlace[places[i]] = x.providerIds; first = first || x; }
+      });
+      return { time: s.time, label: s.label, available: !!first, providerIds: first ? first.providerIds : [], byPlace: byPlace };
+    }) };
   }
 
   // today, or the next day we're open
@@ -318,16 +353,9 @@ window.BuffAPI.ready.then(function () {
   }
 
   function viewProvider() {
-    var where = needsPlace(), here = placeId();
-    var pros = qualifiedPros().filter(function (p) { return !where || here == null || PL.worksThere(p.id, here); });
+    var where = wherePossible() || (PL && placeChoices().length > 1);
+    var pros = qualifiedPros();
     var opts = [{ id: 'any', name: 'First available', initials: '', blurb: 'Most openings' }].concat(pros);
-    var places = where ? '<ul class="stack">' + placeChoices().map(function (id) {
-      var pl = PL.byId(id), on = sameId(here, id);
-      return '<li><button class="pro' + (on ? ' is-on' : '') + '" data-act="place" data-v="' + esc(id) + '" aria-pressed="' + on + '">' +
-        '<span class="avatar">' + icon('pin') + '</span>' +
-        '<span class="svc-main"><span class="svc-name">' + esc(pl.name) + '</span><span class="muted sm">' + esc(pl.address) + '</span></span>' +
-        (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
-    }).join('') + '</ul>' : '';
     // providers' own prices for these services, when any differ from the menu
     var menuPrice = BuffPricing.visit(state.selected, null, null, null).subtotal;
     var ownPrice = function (pid) { return BuffPricing.visit(state.selected, null, null, pid).subtotal; };
@@ -335,7 +363,7 @@ window.BuffAPI.ready.then(function () {
     var rows = opts.map(function (p) {
       var on = state.provider === p.id;
       var price = showPrices && p.id !== 'any' ? ' · ' + money(ownPrice(p.id)) + (state.guests > 1 ? ' each' : '') : '';
-      var at = where && here == null && p.id !== 'any' ? PL.forProvider(p.id).map(function (id) { return (PL.byId(id) || {}).name; }).filter(Boolean).join(' · ') : '';
+      var at = where && p.id !== 'any' ? PL.forProvider(p.id).map(function (id) { return (PL.byId(id) || {}).name; }).filter(Boolean).join(' · ') : '';
       var ig = p.instagram ? '<a class="pro-ig" href="https://www.instagram.com/' + encodeURIComponent(p.instagram) + '/" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on Instagram (@' + esc(p.instagram) + ')">' + IG_ICON + '</a>' : '';
       return '<li class="pro-li"><button class="pro' + (on ? ' is-on' : '') + (ig ? ' has-ig' : '') + '" data-act="pro" data-v="' + p.id + '" aria-pressed="' + on + '">' +
         (p.id === 'any' ? '<span class="avatar">' + icon('star') + '</span>' : avatar(p)) +
@@ -348,17 +376,26 @@ window.BuffAPI.ready.then(function () {
       '<span class="avatar">' + icon('gift') + '</span>' +
       '<span class="svc-main"><span class="svc-name">Gift card</span><span class="muted sm">' + (state.selected.length > 1 ? 'These services' : esc(state.selected[0] || 'This service')) + (state.guests > 1 ? ' for ' + state.guests : '') + ', emailed or printed · ' + money(regularPrice().total * state.guests) + '</span></span>' +
       (gOn ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li></ul>';
-    if (where) {
-      return '<h1 class="h1">Where would you like to go?</h1>' + places +
-        (here == null && !state.place ? '<p class="muted sm">Pick a place, or a provider below.</p>' : '') +
-        '<h2 class="label">Who would you like?</h2>' +
-        (state.guests > 1 ? '<p class="muted sm">With ' + state.guests + ' guests, your pick is for you — we’ll pair your guests with other pros working at the same time.</p>' : '') +
-        '<ul class="stack">' + rows + '</ul>' + gift;
-    }
     return '<h1 class="h1">Who would you like?</h1>' +
       (hidden ? '<p class="muted sm">Showing the providers who do ' + (state.selected.length > 1 ? 'all of ' : '') + esc(state.selected.join(' + ')) + '.</p>' : '') +
       (state.guests > 1 ? '<p class="muted sm">With ' + state.guests + ' guests, your pick is for you — we’ll pair your guests with other pros working at the same time.</p>' : '') +
       '<ul class="stack">' + rows + '</ul>' + gift;
+  }
+
+  function viewWhere() {
+    var sp = slotPlaces(state.slot), here = placeId();
+    var rows = sp.map(function (id) {
+      var pl = PL.byId(id), on = sameId(here, id);
+      var who = state.provider === 'any' ? ((state.slot.byPlace || {})[id] || []).map(providerName).join(', ') : '';
+      return '<li><button class="pro' + (on ? ' is-on' : '') + '" data-act="where" data-v="' + esc(id) + '" aria-pressed="' + on + '">' +
+        '<span class="avatar">' + icon('pin') + '</span>' +
+        '<span class="svc-main"><span class="svc-name">' + esc(pl.name) + '</span><span class="muted sm">' + esc(pl.address) + '</span>' +
+          (who ? '<span class="muted xs">With ' + esc(who) + '</span>' : '') + '</span>' +
+        (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
+    }).join('');
+    return '<h1 class="h1">Where would you like to go?</h1>' +
+      '<p class="muted sm">' + esc(longDate(state.date)) + ' at ' + esc(state.slot.label) + ' is open at ' + (sp.length === 2 ? 'both' : 'these') + ' places.</p>' +
+      '<ul class="stack">' + rows + '</ul>' + (here != null ? holdNote() || '' : '');
   }
 
   function viewTime() {
@@ -410,6 +447,7 @@ window.BuffAPI.ready.then(function () {
     return '<h1 class="h1">When works for you?</h1>' + notice +
       '<div class="days" role="toolbar" aria-label="Choose a day">' + days.join('') + '</div>' +
       (state.date ? '<div class="label">' + esc(longDate(state.date)) + ' · ' + totals().mins + ' min · ' + esc(providerName(state.provider)) + '</div>' : '') +
+      (wherePossible() ? '<p class="muted sm">Showing times at any of our places. You’ll pick where next.</p>' : '') +
       '<div class="card pad-sm">' + body + '</div>' + (state.slot ? holdNote() : '') + wl;
   }
 
@@ -553,9 +591,10 @@ window.BuffAPI.ready.then(function () {
   // ---------- render ----------
   function canContinue() {
     if (state.step === 1) { return state.selected.length > 0 && !comboProblem(); }
-    if (state.step === 2) { return isGift() || !needsPlace() || placeId() != null; }
+    if (state.step === 2) { return true; }
     if (state.step === 3) { return !!state.slot || state.waitlist || isGift(); }
-    if (state.step === 4) { return !state.submitting; }
+    if (state.step === 4) { return placeId() != null; }
+    if (state.step === 5) { return !state.submitting; }
     return false;
   }
 
@@ -576,15 +615,17 @@ window.BuffAPI.ready.then(function () {
 
   function render() {
     var s = state.step;
-    $('#back').hidden = !(s > 1 && s < 5);
+    $('#back').hidden = !(s > 1 && s < 6);
     var prog = $('#progress');
-    prog.hidden = s >= 5;
-    if (s < 5) {
-      $('#step-label').textContent = s === 4 && isGift() ? 'Gift card' : STEP_LABELS[s - 1];
-      $('#step-count').textContent = 'Step ' + s + ' of 4';
-      $('#bar-fill').style.width = (s * 25) + '%';
+    prog.hidden = s >= 6;
+    if (s < 6) {
+      // 5 steps when Where may be asked, otherwise 4 (Where is skipped)
+      var of = wherePossible() || needsWhere() ? 5 : 4, n = of === 4 && s === 5 ? 4 : s;
+      $('#step-label').textContent = s === 5 && isGift() ? 'Gift card' : STEP_LABELS[s - 1];
+      $('#step-count').textContent = 'Step ' + n + ' of ' + of;
+      $('#bar-fill').style.width = (n / of * 100) + '%';
     }
-    var views = [viewServices, viewProvider, viewTime, viewDetails, viewDone];
+    var views = [viewServices, viewProvider, viewTime, viewWhere, viewDetails, viewDone];
     // keep horizontal strips (days, categories) and the page where they were across re-renders
     var main = $('#main');
     var keep = { top: main.scrollTop, days: ($('.days') || {}).scrollLeft || 0, chips: ($('.chips') || {}).scrollLeft || 0 };
@@ -594,8 +635,8 @@ window.BuffAPI.ready.then(function () {
     if ($('.chips')) { $('.chips').scrollLeft = keep.chips; }
 
     var foot = $('#footer');
-    foot.hidden = s >= 5;
-    if (s < 5) {
+    foot.hidden = s >= 6;
+    if (s < 6) {
       var t = totals();
       $('#foot-sub').textContent = state.selected.length
         ? state.selected.length + ' service' + (state.selected.length === 1 ? '' : 's') + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ×' + state.guests : '')
@@ -604,7 +645,7 @@ window.BuffAPI.ready.then(function () {
       $('#foot-detail').innerHTML = footDetail();
       var btn = $('#next');
       btn.disabled = !canContinue();
-      btn.textContent = s === 4 ? (isGift() ? (state.submitting ? 'Saving…' : 'Buy gift card') : state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : 'Book now')) : 'Continue';
+      btn.textContent = s === 5 ? (isGift() ? (state.submitting ? 'Saving…' : 'Buy gift card') : state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : 'Book now')) : 'Continue';
     }
   }
 
@@ -627,18 +668,23 @@ window.BuffAPI.ready.then(function () {
       if (PL && v !== 'any' && v !== 'gift' && state.place != null && !PL.worksThere(v, state.place)) { state.place = null; } // they don't work there
       render();
     }
-    else if (act === 'place') {
-      var np = placeChoices().filter(function (id) { return String(id) === v; })[0];
-      if (!sameId(np, state.place)) { dropHold(); state.slots = null; state.slot = null; state.waitlist = false; }
+    else if (act === 'where') {
+      var np = slotPlaces(state.slot).filter(function (id) { return String(id) === v; })[0];
+      if (np == null) { return; }
+      if (!sameId(np, state.place)) { dropHold(); }
       state.place = np;
-      if (state.provider !== 'any' && state.provider !== 'gift' && !PL.worksThere(state.provider, np)) { state.provider = 'any'; }
+      if (state.slot.byPlace) { state.slot.providerIds = state.slot.byPlace[np]; }
+      if (!hasHold() || !sameId(state.hold.place, np)) { holdSlot(state.slot); }
       render();
     }
     else if (act === 'date') { state.date = v; state.notice = null; loadSlots(); }
     else if (act === 'slot') {
       state.slot = state.slots.slots.filter(function (x) { return x.time === v; })[0];
       state.waitlist = false; state.notice = null;
-      if (!state.hold || state.hold.time !== v || state.hold.date !== state.date || !hasHold()) { holdSlot(state.slot); }
+      var here = placeId(); // known when this time is open at only one place (or the place picked before is open)
+      if (here != null && state.slot.byPlace) { state.slot.providerIds = state.slot.byPlace[here]; }
+      if (here == null) { dropHold(); } // they pick the place on step 4, then it's held
+      else if (!state.hold || state.hold.time !== v || state.hold.date !== state.date || !hasHold() || !sameId(state.hold.place, here)) { holdSlot(state.slot); }
       render();
     }
     else if (act === 'waitlist') { state.waitlist = !state.waitlist; if (state.waitlist) { state.slot = null; dropHold(); } render(); }
@@ -682,18 +728,20 @@ window.BuffAPI.ready.then(function () {
   // the entry behind us, so Back and the arrow always agree.
   function stepBack() {
     if (history.state && history.state.buffStep === state.step && state.step > 1) { history.back(); }
-    else { go(Math.max(1, state.step === 4 && isGift() ? 2 : state.step - 1), { replace: true }); }
+    else { go(Math.max(1, state.step === 5 && isGift() ? 2 : state.step === 5 && !needsWhere() ? 3 : state.step - 1), { replace: true }); }
   }
   $('#back').addEventListener('click', stepBack);
 
   window.addEventListener('popstate', function (e) {
     var s = (e.state && e.state.buffStep) || 1, asked = s;
-    if (state.step === 5) { // already booked: Back starts a fresh booking
+    if (state.step === 6) { // already booked: Back starts a fresh booking
       restart(); go(1, { replace: true }); return;
     }
     if (s > 1 && !state.selected.length) { s = 1; }
-    if (isGift() && s === 3) { s = state.step === 4 ? 2 : 4; } // gift cards skip the date and time
+    if (isGift() && (s === 3 || s === 4)) { s = state.step === 5 ? 2 : 5; } // gift cards skip the date, time and place
     if (s > 3 && !state.slot && !state.waitlist && !isGift()) { s = 3; }
+    if (s === 4 && !needsWhere()) { s = state.step >= 5 ? 3 : 5; }            // only one place: no Where step
+    if (s === 5 && needsWhere() && placeId() == null) { s = 4; }
     if (asked === state.step && s > 1) { history.back(); return; } // duplicate entry (e.g. after "time was taken")
     if (s !== asked) { try { history.replaceState({ buffStep: s }, ''); } catch (err) { /* ignore */ } }
     go(s, { fromHistory: true });
@@ -702,12 +750,13 @@ window.BuffAPI.ready.then(function () {
 
   $('#next').addEventListener('click', function () {
     if (!canContinue()) { return; }
-    if (state.step === 2 && isGift()) { go(4); return; }
+    if (state.step === 2 && isGift()) { go(5); return; }
     if (state.step === 2) {
       ensureDate(); // default to today-or-next-open day so times show immediately
       go(3); loadSlots(); return;
     }
-    if (state.step === 4) { submit(); return; }
+    if (state.step === 3) { go(needsWhere() ? 4 : 5); return; }
+    if (state.step === 5) { submit(); return; }
     go(state.step + 1);
   });
 
@@ -747,7 +796,7 @@ window.BuffAPI.ready.then(function () {
       buyer: { name: c.name.trim(), phone: c.phone.trim(), email: c.email.trim() },
       recipient: { name: g.recipientName.trim(), email: g.delivery === 'self' ? '' : g.recipientEmail.trim() },
       from: g.from.trim() || c.name.trim(), message: g.message.trim(),
-    }).then(function (res) { state.submitting = false; state.result = res; go(5); }, function () {
+    }).then(function (res) { state.submitting = false; state.result = res; go(6); }, function () {
       state.submitting = false; state.errors = { form: 'Something went wrong. Please try again or call us.' }; render();
     });
   }
@@ -770,7 +819,7 @@ window.BuffAPI.ready.then(function () {
     };
     var p = state.waitlist ? API.joinWaitlist(payload)
       : API.createBooking(Object.assign(payload, { time: state.slot.time, providerIds: state.slot.providerIds }));
-    p.then(function (res) { state.submitting = false; state.result = res; state.hold = null; go(5); }, function (err) {
+    p.then(function (res) { state.submitting = false; state.result = res; state.hold = null; go(6); }, function (err) {
       state.submitting = false;
       if (err.code === 'taken') { state.notice = 'Sorry, that time was just booked. Please pick another.'; go(3, { replace: true }); loadSlots(); return; }
       state.errors = { form: err.code === 'not_qualified' ? 'That provider doesn’t do these services. Go back and pick someone else or First available.' : 'Something went wrong. Please try again or call us.' }; render();
