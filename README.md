@@ -53,19 +53,43 @@ There's no login yet, so don't share the link widely.
 | `assets/buff-logo.png` | Logo, taken from a screenshot of buffbeautybar.com |
 | `assets/og-image.png`, `assets/*icon*`, `favicon.ico`, `*.webmanifest` | Link-preview image, browser and home-screen icons (blush background so they read in dark mode). Share tags use absolute URLs for `kevinkolb.github.io/buff/`: update them if the site moves to its own domain |
 
-## Status and next steps
+## Status and to-do
 
-- **Live database.** The site is connected to Supabase (`backend` in `js/config.js`). Menu, hours and providers now come from the database: edit them in Supabase's table editor, not in `config.js`. Setup steps are in `supabase/SETUP.md`. Clearing the two `backend` values switches back to demo mode (sample data, saved only in the browser).
-- **To confirm with Buff** (marked `TODO(Buff)` in `config.js`):
-  - opening hours
-  - how long each service takes (current values are estimates)
-  - the provider list
-- **Coming next** (these need a backend):
-  - a real database and a staff login
-  - Stripe card on file, and charging late-cancel and no-show fees
-  - Twilio texts: confirmations, reminders and waitlist alerts sent automatically
-  - manager calendar and dashboard
-  - gift cards
-  - QuickBooks sync
-  - later, point of sale
-- **Logo:** swap in the original logo file (ideally an SVG) for the sharpest result.
+The site runs on Supabase (`backend` in `js/config.js`; setup in `supabase/SETUP.md`). Managers edit the menu, team, hours, booking rules, business details and closed days on the front desk. Clearing the two `backend` values switches back to demo mode (sample data, saved only in the browser).
+
+### Planned: multiple businesses and locations
+
+The software will serve several businesses, each with one or more locations. Buff Beauty Bar is the first business. The software itself may also be called Buff, so keep the two names apart in code and copy: the platform versus a business on it.
+
+What it will take:
+
+- **Data:** add `businesses` and `locations` tables. Every per-shop table gets a location (and so business) id: settings, business hours, closed days, providers, services, provider services, bookings, waitlist, time off. Clients and staff logins belong to a business, and staff roles can be per location.
+- **Security:** every row-level security policy and function checks that the signed-in person belongs to that business and location, so one business can never see another's clients or bookings.
+- **Booking pages:** each business gets its own address, like `book.example.com/buff` or its own domain, with its own logo, colors, share image and icons. With several locations, clients pick a location first.
+- **Front desk:** a location switcher; managers of a business see all of its locations, and a platform admin view manages businesses.
+- **Payments, email and texts:** each business connects its own card processor account, sender email and texting number.
+- **Moving Buff over:** existing data becomes business 1, location 1, without downtime.
+
+Worth deciding before more single-shop features get built, since every new table adds to the move.
+
+### Needs an account or a decision
+
+- **Email sender** (for example Resend): without it, clients and most staff can't get sign-in links.
+- **Card processor:** card on file and no-show fees (Payroc, Helcim or Stripe).
+- **Text messages** (for example Twilio): confirmations, reminders and waitlist alerts. Carrier registration takes 1–3 weeks.
+- **Supabase Pro** before launch: the free plan pauses after a week without activity.
+- **Go-live:** merge into `main`, point GitHub Pages at it, optionally an own domain, remove sample data, and run Supabase's security advisor.
+
+### To build
+
+- Clients tab on the front desk
+- One-step reschedule
+- Weekly view per provider
+- Schedule updates live when someone books
+- Later: manager dashboard, gift cards, QuickBooks sync, point of sale
+
+### To confirm with Buff
+
+- How long each service takes (current values are estimates)
+- Real provider names and which services each does
+- Logo: swap in the original file (ideally an SVG) for the sharpest result
