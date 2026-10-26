@@ -974,6 +974,39 @@ window.BuffAPI.ready.then(function () {
     }, function () { state.teamMsg[key] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
   }
 
+  // ---------- experiment: services with who does them ----------
+  // A copy of the client Services page. Each provider who does a service gets a
+  // small circle; tapping it opens online booking with the service and that
+  // provider picked, straight to the times.
+  function viewExperiment() {
+    var cats = [];
+    CFG.services.forEach(function (s) { if (cats.indexOf(s.cat) < 0) { cats.push(s.cat); } });
+    var order = CFG.categoryOrder || [];
+    cats.sort(function (a, b) {
+      var ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia < 0 ? order.length : ia) - (ib < 0 ? order.length : ib);
+    });
+    var sections = cats.map(function (c) {
+      var rows = CFG.services.filter(function (s) { return s.cat === c; }).map(function (s) {
+        var who = CFG.providers.filter(function (p) { return API.canDo(p.id, [s.name]); });
+        var dots = who.length
+          ? '<span class="xp-dots">' + who.map(function (p) {
+              return '<a class="xp-dot" href="index.html?service=' + encodeURIComponent(s.name) + '&provider=' + encodeURIComponent(p.id) + '" title="' + esc(p.name) + '" aria-label="Book ' + esc(s.name) + ' with ' + esc(p.name) + '">' +
+                (p.photo ? '<img src="' + esc(p.photo) + '" alt="">' : esc(p.initials)) + '</a>';
+            }).join('') + '</span>'
+          : '<span class="muted xs">No one yet</span>';
+        return '<li class="sv-row' + (s.description ? ' has-desc' : '') + '"><span class="svc-main"><span class="svc-name">' + esc(s.name) + '</span><span class="muted sm">' + s.mins + ' min</span></span>' +
+          (BuffPricing.hasSpecial(s.name) ? '<span class="sp-tag">Special</span>' : '') +
+          '<span class="svc-price">' + money(s.price) + (s.priceNote || '') + '</span>' + dots +
+          (s.description ? '<p class="sv-desc">' + esc(s.description) + '</p>' : '') + '</li>';
+      }).join('');
+      return '<section class="sv-cat"><h2 class="label">' + esc(c) + '</h2><ul class="card list">' + rows + '</ul></section>';
+    }).join('');
+    return '<h1 class="h1">Experiment</h1>' +
+      '<p class="muted sm">The client Services page, with a circle for each provider who does each service. Tap a circle to start online booking with that service and provider, straight to the times.</p>' +
+      '<div class="xp">' + sections + '</div>';
+  }
+
   // ---------- legal (managers) ----------
   function viewLegal() {
     if (!isManager()) { return '<h1 class="h1">Legal</h1><div class="card pad"><p class="center muted">Only managers can see this.</p></div>'; }
@@ -1168,7 +1201,7 @@ window.BuffAPI.ready.then(function () {
     var main = $('#s-main');
     var sched = $('.s-sched');
     var keep = { top: sched ? sched.scrollTop : null, left: sched ? sched.scrollLeft : 0 };
-    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, specials: viewSpecials, gifts: viewGifts, business: viewBusiness, legal: viewLegal }[state.tab]();
+    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, specials: viewSpecials, gifts: viewGifts, business: viewBusiness, legal: viewLegal, experiment: viewExperiment }[state.tab]();
     sched = $('.s-sched');
     if (sched) {
       if (keep.top !== null) { sched.scrollTop = keep.top; sched.scrollLeft = keep.left; }
@@ -1446,7 +1479,7 @@ window.BuffAPI.ready.then(function () {
 
   function tabFromHash() {
     var t = (location.hash || '').slice(1);
-    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'specials', 'gifts', 'business', 'legal'].indexOf(t) >= 0 ? t : null;
+    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'specials', 'gifts', 'business', 'legal', 'experiment'].indexOf(t) >= 0 ? t : null;
   }
   window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab && state.auth === 'ok') { setTab(t); load(); } });
 

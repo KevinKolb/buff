@@ -718,13 +718,19 @@ window.BuffAPI.ready.then(function () {
   function start() {
     try { history.replaceState({ buffStep: 1 }, ''); } catch (e) { /* ignore */ }
     render();
-    // from the Services page: index.html?service=Blow%20Out → that service picked, on to step 2
-    var picked = new URLSearchParams(location.search).get('service');
+    // from the Services page: index.html?service=Blow%20Out → that service picked, on to step 2;
+    // with &provider=p2 (the desk's Experiment tab) that provider is picked too, straight to the times
+    var qs = new URLSearchParams(location.search), picked = qs.get('service'), pro = qs.get('provider');
     var s0 = picked && CFG.services.filter(function (x) { return x.name === picked; })[0];
     if (s0) {
       state.selected = [s0.name]; state.cat = s0.cat;
       try { history.replaceState({ buffStep: 1 }, '', location.pathname); } catch (e) { /* ignore */ }
-      if (!comboProblem()) { go(2); } else { render(); }
+      if (comboProblem()) { render(); }
+      else if (pro && CFG.providers.some(function (p) { return p.id === pro; }) && API.canDo(pro, state.selected)) {
+        state.provider = pro;
+        go(2); // Back from the times returns to the provider step
+        ensureDate(); go(3); loadSlots();
+      } else { go(2); }
     }
     // signed-in client: fill in their details (doesn't hold up the page)
     API.getClientAccount().then(function (acct) {
