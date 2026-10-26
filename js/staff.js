@@ -649,7 +649,9 @@ window.BuffAPI.ready.then(function () {
     $('#signout').hidden = !signedIn || API.mode !== 'live';
     if (!signedIn) { $('#s-main').innerHTML = viewAuth(); return; }
     if (API.mode === 'live') {
-      $('.proto-note').innerHTML = 'Signed in as ' + esc(state.staff.email) + ' (' + esc(state.staff.roles.map(roleLabel).join(', ')) + ').';
+      $('.proto-note').innerHTML = 'Signed in as ' + esc(state.staff.email) + ' (' + esc(state.staff.roles.map(roleLabel).join(', ')) + ').' +
+        (isManager() ? ' Gray appointments are sample data. <button class="link-inline" data-act="sample-add">Add a sample week</button> · ' +
+          '<button class="link-inline" data-act="sample-remove">Remove sample data</button>' + (state.sampleMsg ? ' <span role="status">' + esc(state.sampleMsg) + '</span>' : '') : '');
     }
 
     document.querySelectorAll('.s-tab').forEach(function (t) { t.hidden = !tabAllowed(t.getAttribute('data-tab')); });
@@ -744,6 +746,15 @@ window.BuffAPI.ready.then(function () {
     else if (act === 'tm-move') { moveTeam(el.getAttribute('data-id'), +v); }
     else if (act === 'auth-retry') { state.auth = 'signin'; render(); }
     else if (act === 'signout') { API.signOut().then(function () { state.staff = null; state.auth = 'signin'; render(); }); }
+    else if (act === 'sample-add' || act === 'sample-remove') {
+      var adding = act === 'sample-add';
+      if (!adding && !confirm('Remove all sample bookings and sample clients? Real bookings aren’t touched.')) { return; }
+      state.sampleMsg = adding ? 'Adding…' : 'Removing…'; render();
+      (adding ? API.addSampleWeek() : API.removeSampleData()).then(function (n) {
+        state.sampleMsg = adding ? 'Added ' + n + ' sample appointments.' : 'Removed ' + n + ' sample appointments.';
+        return load();
+      }, function () { state.sampleMsg = 'That didn’t work. Check your connection.'; render(); });
+    }
     else if (act === 'reset') {
       if (!confirm('Delete all bookings, waitlist entries and time off saved in this browser?')) { return; }
       API.resetDemo().then(load);

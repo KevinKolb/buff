@@ -167,3 +167,5 @@
 .bk-nomatch { padding: 10px 12px; }
 .bk-picked { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; background: var(--blush); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
 .field textarea { border-radius: 10px; border: 1px solid var(--border); padding: 10px 12px; font-size: 16px; font-family: inherit; background: #fff; color: var(--ink); resize: vertical; width: 100%; }
+.bk-match.is-active { background: var(--blush); }
+.bk-match mark { background: #F5D3BE; color: inherit; border-radius: 3px; padding: 0 1px; }

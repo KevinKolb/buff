@@ -432,6 +432,11 @@
       return delay(b);
     },
 
+    // ======== sample data (managers) ========
+    // Demo mode always shows generated sample appointments; nothing to add.
+    addSampleWeek: function () { return delay(0); },
+    removeSampleData: function () { return delay(0); },
+
     // ======== clients (staff) ========
 
     /** Every client: [{ id, name, phone, email, staffNote }], by name. */

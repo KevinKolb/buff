@@ -33,6 +33,8 @@ window.BuffAPI.ready.then(function () {
     clients: null,      // every client, for the picker
     clientId: null,     // picked existing client
     clientQuery: '',
+    matchIdx: 0,        // highlighted match (arrow keys)
+    matchCount: 0,
     policy: false,
     errors: {},
     notice: '',
@@ -157,23 +159,46 @@ window.BuffAPI.ready.then(function () {
 
   // ----- client picker -----
   function digits(s) { return String(s || '').replace(/\D/g, ''); }
+  // Type-to-find: every word typed must appear somewhere in the client's name,
+  // email or mobile, in any order ("jan", "doe", "do ja" and "0123" all find
+  // Jane Doe, 504-555-0123). Names that start with a typed word rank first.
+  function fold(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
   function matches(q) {
-    q = q.trim().toLowerCase();
-    if (!q || !state.clients) { return []; }
-    var qd = digits(q);
-    return state.clients.filter(function (c) {
-      return (c.name || '').toLowerCase().indexOf(q) >= 0 || (c.email || '').indexOf(q) >= 0 ||
-        (qd.length >= 3 && digits(c.phone).indexOf(qd) >= 0);
-    }).slice(0, 8);
+    var words = fold(q).split(/\s+/).filter(Boolean);
+    if (!words.length || !state.clients) { return []; }
+    var scored = [];
+    state.clients.forEach(function (c) {
+      var name = fold(c.name), email = fold(c.email), phone = digits(c.phone), score = 0;
+      var ok = words.every(function (w) {
+        var wd = digits(w);
+        if (name.indexOf(w) >= 0) { score += (' ' + name).indexOf(' ' + w) >= 0 ? 3 : 1; return true; }
+        if (email.indexOf(w) >= 0) { score += 1; return true; }
+        if (wd.length >= 3 && wd.length === w.replace(/[\s().-]/g, '').length && phone.indexOf(wd) >= 0) { score += 1; return true; }
+        return false;
+      });
+      if (ok) { scored.push({ c: c, score: score }); }
+    });
+    scored.sort(function (a, b) { return b.score - a.score || fold(a.c.name).localeCompare(fold(b.c.name)); });
+    return scored.slice(0, 8).map(function (x) { return x.c; });
+  }
+  // mark the first typed word found in the name
+  function highlight(name, q) {
+    var folded = fold(name);
+    var w = fold(q).split(/\s+/).filter(function (x) { return x && folded.indexOf(x) >= 0; })[0];
+    if (!w) { return esc(name); }
+    var i = folded.indexOf(w);
+    return esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + w.length)) + '</mark>' + esc(name.slice(i + w.length));
   }
   function matchList() {
     var q = state.clientQuery.trim();
     if (!q) { return ''; }
     var list = matches(q);
+    state.matchCount = list.length;
+    if (state.matchIdx >= list.length) { state.matchIdx = list.length - 1; }
     if (!list.length) { return '<li class="bk-nomatch muted sm">No client matches “' + esc(q) + '”. Fill in their details below to add them.</li>'; }
-    return list.map(function (c) {
-      return '<li><button type="button" class="bk-match" data-act="pick-client" data-v="' + esc(c.id) + '">' +
-        '<span class="b">' + esc(c.name || '(no name)') + '</span><span class="muted xs">' + esc([c.phone, c.email].filter(Boolean).join(' · ')) + '</span></button></li>';
+    return list.map(function (c, i) {
+      return '<li><button type="button" class="bk-match' + (i === state.matchIdx ? ' is-active' : '') + '" data-act="pick-client" data-v="' + esc(c.id) + '" tabindex="-1">' +
+        '<span class="b">' + highlight(c.name || '(no name)', q) + '</span><span class="muted xs">' + esc([c.phone, c.email].filter(Boolean).join(' · ')) + '</span></button></li>';
     }).join('');
   }
   function viewPicker() {
@@ -182,7 +207,7 @@ window.BuffAPI.ready.then(function () {
         '<button class="link sm" data-act="new-client">New client instead</button></div>';
     }
     return '<div class="field bk-pick"><label for="bk-find">Find a client</label>' +
-      '<input id="bk-find" type="search" autocomplete="off" placeholder="' + (state.clients ? 'Name, mobile or email' : 'Loading clients…') + '" value="' + esc(state.clientQuery) + '" aria-controls="bk-matches">' +
+      '<input id="bk-find" type="search" autocomplete="off" spellcheck="false" placeholder="' + (state.clients ? 'Start typing a name, mobile or email' : 'Loading clients…') + '" value="' + esc(state.clientQuery) + '" aria-controls="bk-matches">' +
       '<ul id="bk-matches" class="bk-matches" aria-label="Matching clients">' + matchList() + '</ul>' +
       '<span class="muted xs">Or fill in a new client’s details below.</span></div>';
   }
@@ -196,7 +221,15 @@ window.BuffAPI.ready.then(function () {
     var f = $('#bk-name'); if (f) { f.focus(); }
   }
   function loadClients() {
-    return API.listClients().then(function (list) { state.clients = list; render(); }, function () { state.clients = []; render(); });
+    function done(list) {
+      state.clients = list;
+      var box = $('#bk-find');
+      if (box) { // update just the search, so someone already typing isn't interrupted
+        box.placeholder = 'Start typing a name, mobile or email';
+        $('#bk-matches').innerHTML = matchList();
+      } else { render(); }
+    }
+    return API.listClients().then(done, function () { done([]); });
   }
 
   function viewClient() {
@@ -304,8 +337,18 @@ window.BuffAPI.ready.then(function () {
     if (state.auth !== 'ok') { main.innerHTML = viewAuth(); return; }
     var sched = $('.bk-sched');
     var keep = sched ? { top: sched.scrollTop, left: sched.scrollLeft } : null;
+    // keep the cursor in whatever field was being typed in (data loading redraws the page)
+    var ae = document.activeElement, focusId = ae && ae.id && main.contains(ae) ? ae.id : null, caret = null;
+    try { caret = focusId ? ae.selectionStart : null; } catch (e) { caret = null; }
     main.innerHTML = '<h1 class="h1">Book a client</h1>' +
       '<div class="bk">' + viewServices() + viewWhen() + viewDay() + (state.result ? viewDone() : viewClient()) + '</div>';
+    if (focusId) {
+      var again = document.getElementById(focusId);
+      if (again) {
+        again.focus({ preventScroll: true });
+        if (caret != null) { try { again.setSelectionRange(caret, caret); } catch (e) { /* not a text field */ } }
+      }
+    }
     sched = $('.bk-sched');
     if (sched) {
       if (keep) { sched.scrollTop = keep.top; sched.scrollLeft = keep.left; }
@@ -399,8 +442,25 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('input', function (e) {
     var t = e.target;
     if (t.form && t.form.id === 'bk-form' && t.name) { state.client[t.name] = t.value; }
-    if (t.id === 'bk-find') { state.clientQuery = t.value; $('#bk-matches').innerHTML = matchList(); } // only the list, so typing isn't interrupted
+    if (t.id === 'bk-find') { state.clientQuery = t.value; state.matchIdx = 0; $('#bk-matches').innerHTML = matchList(); } // only the list, so typing isn't interrupted
   });
+  // arrow keys move through matches, Enter picks, Escape clears
+  document.addEventListener('keydown', function (e) {
+    if (e.target.id !== 'bk-find' || !state.clientQuery.trim()) { return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!state.matchCount) { return; }
+      state.matchIdx = (state.matchIdx + (e.key === 'ArrowDown' ? 1 : -1) + state.matchCount) % state.matchCount;
+      $('#bk-matches').innerHTML = matchList();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      var btn = document.querySelectorAll('.bk-match')[state.matchIdx];
+      if (btn) { pickClient(btn.getAttribute('data-v')); }
+    } else if (e.key === 'Escape') {
+      state.clientQuery = ''; e.target.value = ''; $('#bk-matches').innerHTML = '';
+    }
+  });
+
   document.addEventListener('change', function (e) {
     var t = e.target;
     if (t.id === 'bk-policy') { state.policy = t.checked; if (t.checked) { delete state.errors.policy; } }
