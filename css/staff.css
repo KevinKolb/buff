@@ -225,3 +225,14 @@
 .s-gc-use { display: flex; align-items: center; gap: 4px; }
 .s-gc-use input { width: 96px; min-height: 40px; border-radius: 10px; border: 1px solid var(--border); padding: 6px 8px; font-size: 16px; }
 .s-gc .row-wrap { margin-top: 6px; gap: 8px; }
+
+/* Legal tab */
+.s-legal { padding: 0; }
+.s-legal summary { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; padding: 14px 16px; min-height: 52px; cursor: pointer; }
+.s-legal-list { list-style: none; margin: 0; padding: 0 16px 8px; }
+.s-legal-list li { padding: 12px 0; border-top: 1px solid var(--border); }
+.s-legal-list p { margin: 6px 0 0; line-height: 1.5; }
+.s-legal-todo { color: var(--slate); }
+.s-legal-list .pill { font-size: 10px; flex-shrink: 0; }
+.s-legal-launch { background: #C08A5B; color: #fff; }
+.s-legal-later { background: #e5e0da; color: #555; }

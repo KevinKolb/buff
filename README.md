@@ -48,6 +48,7 @@ There's no login yet, so don't share the link widely.
 | `js/app.js` | The booking flow |
 | `manage.html`, `js/manage.js` | Client lookup and cancel |
 | `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team (photos, Instagram) and staff logins, menu, specials, gift cards, business details, hours and booking rules |
+| `js/legal.js` | The front desk Legal tab: possible legal issues by category (edit the list here) |
 | `book.html`, `js/book.js` | Staff booking for phone and walk-in clients, with the day's schedule alongside |
 | `account.html`, `js/account.js` | Client sign-in: upcoming and past visits, cancel, update name and mobile |
 | `services.html`, `js/services.js` | Services, descriptions and prices by category; + starts booking with that service picked |

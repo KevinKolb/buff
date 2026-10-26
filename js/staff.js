@@ -34,6 +34,7 @@ window.BuffAPI.ready.then(function () {
     menuCat: null,     // category being edited on the Menu tab
     specials: null,    // managers' Specials tab
     gifts: null,       // Gift cards tab
+    legalOpen: {},     // Legal tab: which categories are open
     giftQ: '',         // gift card search
     giftUse: {},       // amount being used, by gift card id
     spEdit: null,      // special being added or edited
@@ -973,6 +974,29 @@ window.BuffAPI.ready.then(function () {
     }, function () { state.teamMsg[key] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
   }
 
+  // ---------- legal (managers) ----------
+  function viewLegal() {
+    if (!isManager()) { return '<h1 class="h1">Legal</h1><div class="card pad"><p class="center muted">Only managers can see this.</p></div>'; }
+    var cats = window.BuffLegal || [];
+    var total = 0, launch = 0;
+    cats.forEach(function (c) { c.items.forEach(function (x) { total++; if (x.when === 'launch') { launch++; } }); });
+    var list = cats.map(function (c, i) {
+      var items = c.items.slice().sort(function (a, b) { return (a.when === 'launch' ? 0 : 1) - (b.when === 'launch' ? 0 : 1); });
+      var nl = items.filter(function (x) { return x.when === 'launch'; }).length;
+      return '<details class="card s-legal"' + (state.legalOpen[i] ? ' open' : '') + ' data-legal="' + i + '"><summary><span class="b">' + esc(c.cat) + '</span>' +
+          '<span class="muted xs">' + items.length + (items.length === 1 ? ' item' : ' items') + (nl ? ' · ' + nl + ' before launch' : '') + '</span></summary>' +
+        '<ul class="s-legal-list">' + items.map(function (x) {
+          return '<li><div class="row-between"><span class="b sm">' + esc(x.title) + '</span><span class="pill s-legal-' + x.when + '">' + (x.when === 'launch' ? 'Before launch' : 'Later') + '</span></div>' +
+            '<p class="sm">' + esc(x.why) + '</p><p class="sm s-legal-todo"><b>To do:</b> ' + esc(x.todo) + '</p></li>';
+        }).join('') + '</ul></details>';
+    }).join('');
+    return '<h1 class="h1">Legal</h1>' +
+      '<p class="notice">This is not legal advice. It’s a list of possible issues to go over with a lawyer and an accountant, especially the ones marked Before launch.</p>' +
+      '<p class="muted sm">' + total + ' items in ' + cats.length + ' categories · ' + launch + ' before launch. ' +
+        '<button class="link-inline" data-act="legal-all">' + (cats.every(function (c, i) { return state.legalOpen[i]; }) ? 'Close all' : 'Open all') + '</button></p>' +
+      '<div class="stack">' + list + '</div>';
+  }
+
   // ---------- specials (managers) ----------
   function loadSpecials() {
     state.loadError = null;
@@ -1144,7 +1168,7 @@ window.BuffAPI.ready.then(function () {
     var main = $('#s-main');
     var sched = $('.s-sched');
     var keep = { top: sched ? sched.scrollTop : null, left: sched ? sched.scrollLeft : 0 };
-    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, specials: viewSpecials, gifts: viewGifts, business: viewBusiness }[state.tab]();
+    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, specials: viewSpecials, gifts: viewGifts, business: viewBusiness, legal: viewLegal }[state.tab]();
     sched = $('.s-sched');
     if (sched) {
       if (keep.top !== null) { sched.scrollTop = keep.top; sched.scrollLeft = keep.left; }
@@ -1160,7 +1184,7 @@ window.BuffAPI.ready.then(function () {
   }
 
   function tabAllowed(tab) {
-    if (tab === 'team' || tab === 'menu' || tab === 'specials' || tab === 'business') { return isManager(); }
+    if (tab === 'team' || tab === 'menu' || tab === 'specials' || tab === 'business' || tab === 'legal') { return isManager(); }
     if (tab === 'waitlist' || tab === 'gifts') { return canBook(); }
     return true; // schedule, time off
   }
@@ -1217,6 +1241,10 @@ window.BuffAPI.ready.then(function () {
       API.removeClosedDate(v).then(function () { delete state.closedCounts[v]; state.teamMsg.closed = { text: 'Reopened.' }; return loadClosed(); });
     }
     else if (act === 'biz-save') { saveSettingsPart(el.getAttribute('data-k')); }
+    else if (act === 'legal-all') {
+      var allOpen = (window.BuffLegal || []).every(function (c, i) { return state.legalOpen[i]; });
+      (window.BuffLegal || []).forEach(function (c, i) { state.legalOpen[i] = !allOpen; }); render();
+    }
     else if (act === 'gc-paid') { giftUpdate(v, { status: 'paid' }, 'Marked paid.'); }
     else if (act === 'gc-void') { if (confirm('Void gift card ' + giftById(v).code + '? It can’t be used after this.')) { giftUpdate(v, { status: 'void' }, 'Voided.'); } }
     else if (act === 'gc-use') {
@@ -1277,6 +1305,7 @@ window.BuffAPI.ready.then(function () {
 
   document.addEventListener('toggle', function (e) {
     var d = e.target; if (d.matches && d.matches('details[data-q]')) { state.qOpen[d.getAttribute('data-q')] = d.open; }
+    if (d.matches && d.matches('details[data-legal]')) { state.legalOpen[d.getAttribute('data-legal')] = d.open; }
   }, true);
   document.addEventListener('input', onFormInput);
   document.addEventListener('change', onFormInput);
@@ -1417,7 +1446,7 @@ window.BuffAPI.ready.then(function () {
 
   function tabFromHash() {
     var t = (location.hash || '').slice(1);
-    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'specials', 'gifts', 'business'].indexOf(t) >= 0 ? t : null;
+    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'specials', 'gifts', 'business', 'legal'].indexOf(t) >= 0 ? t : null;
   }
   window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab && state.auth === 'ok') { setTab(t); load(); } });
 
