@@ -2052,3 +2052,58 @@ revoke execute on function public.get_gift_card(text) from public;
 revoke execute on function public._gift_public(public.gift_cards) from public, anon, authenticated;
 grant execute on function public.buy_gift_card(jsonb) to anon, authenticated;
 grant execute on function public.get_gift_card(text) to anon, authenticated;
+
+-- Descriptions for every service, shown on the Services page.
+-- Only fills in services that don't have a description yet, so edits made on
+-- the front desk's Menu tab are kept. Safe to run more than once.
+update public.services s set description = d.description
+from (values
+  ('Blow Out', 'Wash, condition and a smooth, bouncy blowout styled your way: sleek and straight, soft waves or volume.'),
+  ('Dry Style', 'No wash. We style your clean, dry hair with a flat iron or curling iron for an easy refresh.'),
+  ('Updo', 'An elegant updo or half-up style for weddings, galas and Mardi Gras balls. Come with clean, dry hair, and bring a photo of the look you love.'),
+  ('Styling Add-on', 'Add curls, waves or a braid to a blowout. Price depends on the style.'),
+  ('Conditioning Treatment', 'A deep conditioning mask added to your wash to soften, smooth and add shine. Pairs well with a blowout.'),
+  ('Smoothing Treatment', 'A smoothing treatment that cuts frizz and blow-dry time for weeks. Includes a blowout. Ask us about aftercare and when you can wash.'),
+  ('Brow Wax', 'Shaping with wax and a tweezer cleanup for clean, defined brows that suit your face.'),
+  ('Brow Tweeze', 'Shaping by tweezing only, for sensitive skin or anyone avoiding wax.'),
+  ('Bikini', 'Removes hair outside the swimsuit line.'),
+  ('Extended Bikini', 'Goes further than a bikini wax, removing more hair from the front and sides.'),
+  ('Brazilian', 'Removes all hair from the front to the back, with the option to leave a small strip or shape in front.'),
+  ('Half Leg Lower', 'Smooth legs from the knee down to the ankle.'),
+  ('Half Leg Upper', 'Knee to the top of the thigh.'),
+  ('Full Leg', 'From the top of the thigh to the ankle.'),
+  ('Chin and Jaw', 'Removes hair along the chin and jawline.'),
+  ('Sideburns', 'Clears hair along the sides of the face in front of the ears.'),
+  ('Under Arm', 'Smooth underarms for weeks, without daily shaving.'),
+  ('Half Arm', 'Wrist to elbow.'),
+  ('Full Arm', 'Wrist to shoulder.'),
+  ('Neck', 'Cleans up the hairline at the back of the neck.'),
+  ('Shoulders', 'Removes hair across the tops of the shoulders.'),
+  ('Half Back', 'Upper or lower back.'),
+  ('Full Back', 'The whole back, from the shoulders to the waist.'),
+  ('Manicure', 'Nail shaping, cuticle care, a hand massage and regular polish.'),
+  ('Pedicure', 'A foot soak, nail shaping, cuticle care, callus smoothing, a foot and leg massage, and regular polish.'),
+  ('Dazzle Dry Manicure', 'A manicure with Dazzle Dry, a polish system that dries in about five minutes. No UV light needed.'),
+  ('Dazzle Dry Pedicure', 'Our pedicure finished with fast-drying Dazzle Dry polish, so you can slip on shoes and go.'),
+  ('Gel Manicure', 'A manicure with gel polish cured under a light, for a glossy finish that usually lasts two weeks or more without chipping.'),
+  ('Gel Manicure with Removal', 'We take off your old gel polish, then give you a fresh gel manicure.'),
+  ('Gel Pedicure', 'Our pedicure finished with long-lasting gel polish.'),
+  ('Gel Pedicure with Removal', 'We take off your old gel polish, then give you a fresh gel pedicure.'),
+  ('Gel Removal', 'Gentle removal of gel polish, with nails shaped and buffed afterward.'),
+  ('Dip Manicure', 'Dip powder adds strength and long-lasting color. Great if your nails tend to break.'),
+  ('Dip Manicure with Removal', 'We take off your old dip powder, then give you a fresh dip manicure.'),
+  ('Dip Removal', 'Gentle removal of dip powder, with nails shaped and buffed afterward.'),
+  ('Brow Tint', 'Semi-permanent color that fills in and defines brows. Usually lasts a few weeks.'),
+  ('Lash Tint', 'Darkens your natural lashes so they look fuller without mascara. Usually lasts several weeks.'),
+  ('Eyes Only Makeup Application', 'Eyeshadow, liner and mascara for a polished eye look. Add lashes for extra drama.'),
+  ('Full Face Makeup Application', 'Complete makeup from skin prep and foundation to eyes, brows and lips, for events, photos or a night out.'),
+  ('Strip Lashes', 'A full strip of false lashes applied for the day or night. Add to any makeup service.'),
+  ('Individual Lashes', 'Individual false lashes placed for a natural, fuller look that lasts for your event.'),
+  ('Spray Tan', 'A custom, streak-free airbrush tan in minutes. Exfoliate and shave the day before, and wear loose, dark clothes to your visit.'),
+  ('Basecoat', 'Applied before your spray tan to help it go on and fade evenly.'),
+  ('Topcoat', 'Applied after your spray tan to help lock in the color.'),
+  ('Permanent Bracelet', 'A dainty chain sized to your wrist and welded closed, with no clasp to break or lose. Pick your chain at your visit.'),
+  ('Permanent Anklet', 'A chain fitted to your ankle and welded closed, made to wear every day.'),
+  ('Permanent Necklace', 'A delicate chain fitted to your neck and welded closed, a lasting piece to wear every day.')
+) as d(name, description)
+where s.name = d.name and coalesce(trim(s.description), '') = '';
