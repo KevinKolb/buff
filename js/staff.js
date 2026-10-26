@@ -21,7 +21,10 @@ window.BuffAPI.ready.then(function () {
     loading: true,
     team: null,        // all providers incl. hidden (managers' Team tab)
     drafts: {},        // unsaved edits on the Team tab, by provider id ('new' for the add form)
-    teamMsg: {},       // per-card status line, by provider id (and menu keys like 'svc:12')
+    teamMsg: {},
+    quals: {},         // { providerId: [serviceId] } who does which services
+    qdrafts: {},       // unsaved service ticks, by provider id
+    qOpen: {},         // which providers' service lists are expanded       // per-card status line, by provider id (and menu keys like 'svc:12')
     menu: null,        // { services, categories } for the managers' Menu tab
     menuCat: null,     // category being edited on the Menu tab
     auth: 'checking',  // checking → signin → sent | denied | ok
@@ -250,7 +253,44 @@ window.BuffAPI.ready.then(function () {
 
   // ---------- team (managers) ----------
   function loadTeam() {
-    return Promise.all([API.listProviders(), API.listStaff()]).then(function (r) { state.team = r[0]; state.staffList = r[1]; render(); });
+    return Promise.all([API.listProviders(), API.listStaff(), API.listQualifications(), API.listMenu()]).then(function (r) {
+      state.team = r[0]; state.staffList = r[1]; state.quals = r[2]; state.menu = r[3]; render();
+    });
+  }
+
+  // ----- which services each provider does -----
+  function qualDraft(pid) { return state.qdrafts[pid] || (state.quals[pid] || []).slice(); }
+
+  function viewQuals(p) {
+    var mine = qualDraft(p.id), dirty = !!state.qdrafts[p.id], services = state.menu.services, msg = state.teamMsg['q:' + p.id];
+    var cats = state.menu.categories.filter(function (c) { return services.some(function (s) { return s.cat === c; }); });
+    var groups = cats.map(function (c) {
+      var inCat = services.filter(function (s) { return s.cat === c; });
+      var on = inCat.filter(function (s) { return mine.indexOf(s.id) >= 0; }).length;
+      return '<fieldset class="s-qcat"><legend><label class="agree"><input type="checkbox" data-qual="' + esc(p.id) + '" data-cat="' + esc(c) + '"' + (on === inCat.length ? ' checked' : '') + '>' +
+          '<span><b>' + esc(c) + '</b> <span class="muted xs">' + on + ' of ' + inCat.length + '</span></span></label></legend>' +
+        '<div class="s-qlist">' + inCat.map(function (s) {
+          return '<label class="agree"><input type="checkbox" data-qual="' + esc(p.id) + '" value="' + esc(s.id) + '"' + (mine.indexOf(s.id) >= 0 ? ' checked' : '') + '><span>' + esc(s.name) + (s.active ? '' : ' <span class="muted xs">(hidden)</span>') + '</span></label>';
+        }).join('') + '</div></fieldset>';
+    }).join('');
+    var count = mine.filter(function (id) { return services.some(function (s) { return s.id === id; }); }).length;
+    return '<details class="s-quals" data-q="' + esc(p.id) + '"' + (state.qOpen[p.id] ? ' open' : '') + '>' +
+      '<summary>Services they do: <b>' + count + ' of ' + services.length + '</b>' + (count ? '' : ' <span class="s-warn">Not bookable yet</span>') + '</summary>' +
+      '<p class="muted xs">Clients and staff can only book ' + esc(p.name) + ' for the services ticked here.</p>' + groups +
+      (msg ? '<p class="' + (msg.err ? 'notice' : 'muted sm') + '" role="status">' + esc(msg.text) + '</p>' : '') +
+      '<div class="row-wrap"><button class="btn-primary sm" data-act="q-save" data-id="' + esc(p.id) + '"' + (dirty ? '' : ' disabled') + '>Save services</button>' +
+        (dirty ? '<button class="link sm" data-act="q-undo" data-id="' + esc(p.id) + '">Undo</button>' : '') + '</div>' +
+    '</details>';
+  }
+
+  function saveQuals(pid) {
+    var ids = qualDraft(pid);
+    state.teamMsg['q:' + pid] = { text: 'Saving…' }; render();
+    API.setQualifications(pid, ids).then(function () {
+      delete state.qdrafts[pid];
+      state.teamMsg['q:' + pid] = { text: 'Saved. Booking now follows this list.' };
+      return loadTeam();
+    }, function () { state.teamMsg['q:' + pid] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
   }
 
   // ----- staff logins (who can sign in, and with which roles) -----
@@ -357,6 +397,7 @@ window.BuffAPI.ready.then(function () {
         (msg ? '<p class="' + (msg.err ? 'notice' : 'muted sm') + '" role="status">' + esc(msg.text) + '</p>' : '') +
         '<div class="row-wrap"><button class="btn-primary sm" data-act="tm-save" data-id="' + esc(p.id) + '"' + (dirty ? '' : ' disabled') + '>Save</button>' +
           (dirty ? '<button class="link sm" data-act="tm-undo" data-id="' + esc(p.id) + '">Undo changes</button>' : '') + '</div>' +
+        viewQuals(p) +
       '</li>';
     }).join('');
     var nd = state.drafts['new'] || { name: '', initials: '', blurb: '' };
@@ -419,7 +460,7 @@ window.BuffAPI.ready.then(function () {
 
   // ---------- menu (managers) ----------
   function loadMenu() {
-    return API.listMenu().then(function (m) { state.menu = m; render(); });
+    return Promise.all([API.listMenu(), API.listQualifications()]).then(function (r) { state.menu = r[0]; state.quals = r[1]; render(); });
   }
 
   function svcById(id) { return state.menu.services.filter(function (s) { return String(s.id) === String(id); })[0]; }
@@ -447,6 +488,15 @@ window.BuffAPI.ready.then(function () {
         '<div class="field"><label for="mn-cat-' + id + '">Category</label><select id="mn-cat-' + id + '" data-menu="' + esc(key) + '" name="cat">' + cats + '</select></div>' +
       '</div>' +
       '<label class="agree"><input type="checkbox" data-menu="' + esc(key) + '" name="priceNote"' + (d.priceNote ? ' checked' : '') + '><span>Starting price (shows as ' + money(+d.price || 0) + '+)</span></label>';
+  }
+
+  // who is set up for this service (from the Team tab)
+  function doneBy(s) {
+    if (!state.quals) { return ''; }
+    var who = CFG.providers.filter(function (p) { return (state.quals[p.id] || []).indexOf(s.id) >= 0; });
+    return who.length
+      ? '<div class="muted xs">Done by ' + esc(who.map(function (p) { return p.name; }).join(', ')) + '</div>'
+      : '<div class="s-warn xs">No provider is set up for this yet. Choose who does it on the Team tab.</div>';
   }
 
   function viewMenu() {
@@ -483,7 +533,7 @@ window.BuffAPI.ready.then(function () {
     var cards = list.map(function (s, i) {
       var key = 'svc:' + s.id, d = menuDraft(key), dirty = !!state.drafts[key];
       return '<li class="card s-wl' + (s.active ? '' : ' is-hidden-pro') + '">' +
-        '<div class="row-between"><div><div class="b">' + esc(s.name) + '</div><div class="muted xs">' + money(s.price) + (s.priceNote ? '+' : '') + ' · ' + s.mins + ' min' + (s.active ? '' : ' · hidden from booking') + '</div></div>' +
+        '<div class="row-between"><div><div class="b">' + esc(s.name) + '</div><div class="muted xs">' + money(s.price) + (s.priceNote ? '+' : '') + ' · ' + s.mins + ' min' + (s.active ? '' : ' · hidden from booking') + '</div>' + doneBy(s) + '</div>' +
           '<div class="row-wrap s-move">' +
             '<button class="round" data-act="mn-move" data-k="' + s.id + '" data-v="-1" aria-label="Move ' + esc(s.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
             '<button class="round" data-act="mn-move" data-k="' + s.id + '" data-v="1" aria-label="Move ' + esc(s.name) + ' down"' + (i === list.length - 1 ? ' disabled' : '') + '>↓</button>' +
@@ -732,6 +782,8 @@ window.BuffAPI.ready.then(function () {
       el.disabled = true;
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
+    else if (act === 'q-save') { saveQuals(el.getAttribute('data-id')); }
+    else if (act === 'q-undo') { var qid = el.getAttribute('data-id'); delete state.qdrafts[qid]; delete state.teamMsg['q:' + qid]; render(); }
     else if (/^st-/.test(act)) { staffAction(act, el.getAttribute('data-k')); }
     else if (act === 'mn-pick') { state.menuCat = el.getAttribute('data-k'); render(); }
     else if (act === 'mn-save') { saveSvc(el.getAttribute('data-k')); }
@@ -765,10 +817,26 @@ window.BuffAPI.ready.then(function () {
   // click on the dialog backdrop closes it
   $('#sheet').addEventListener('click', function (e) { if (e.target === this) { this.close(); } });
 
+  document.addEventListener('toggle', function (e) {
+    var d = e.target; if (d.matches && d.matches('details[data-q]')) { state.qOpen[d.getAttribute('data-q')] = d.open; }
+  }, true);
   document.addEventListener('input', onFormInput);
   document.addEventListener('change', onFormInput);
   function onFormInput(e) {
     var t = e.target;
+    var qpid = t.getAttribute && t.getAttribute('data-qual');
+    if (qpid) {
+      if (e.type !== 'change') { return; }
+      var ids = qualDraft(qpid), cat = t.getAttribute('data-cat');
+      var touched = state.menu.services.filter(function (s) { return cat ? s.cat === cat : String(s.id) === t.value; }).map(function (s) { return s.id; });
+      touched.forEach(function (id) {
+        var at = ids.indexOf(id);
+        if (t.checked && at < 0) { ids.push(id); } else if (!t.checked && at >= 0) { ids.splice(at, 1); }
+      });
+      state.qdrafts[qpid] = ids; state.qOpen[qpid] = true; delete state.teamMsg['q:' + qpid];
+      render();
+      return;
+    }
     var skey = t.getAttribute && t.getAttribute('data-staff');
     if (skey) {
       var sd = state.drafts[skey] = Object.assign({}, staffBase(skey), state.drafts[skey]);

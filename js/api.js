@@ -42,6 +42,7 @@
     if (db.providers) { CFG.providers = db.providers.filter(function (p) { return p.active; }); } // edited on the Team tab
     if (db.services) { CFG.services = db.services.filter(function (s) { return s.active; }); }    // edited on the Menu tab
     if (db.categoryOrder) { CFG.categoryOrder = db.categoryOrder; }
+    CFG.qualified = qualifiedNames();                                       // who does which services (Team tab)
   }
   sync();
   function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* keep working in memory */ } }
@@ -108,7 +109,7 @@
     return true;
   }
 
-  function slotsFor(dateISO, mins, providerId, guests) {
+  function slotsFor(dateISO, mins, providerId, guests, services) {
     var hrs = hoursOn(dateISO);
     if (!hrs) { return { closed: true, slots: [] }; }
     var busyMap = {};
@@ -121,7 +122,7 @@
 
     var slots = [];
     for (var t = hrs.open; t + mins <= hrs.close; t += CFG.booking.slotStepMinutes) {
-      var free = CFG.providers.filter(function (p) { return isFree(busyMap[p.id], t, t + mins); }).map(function (p) { return p.id; });
+      var free = CFG.providers.filter(function (p) { return isFree(busyMap[p.id], t, t + mins) && canDo(p.id, services); }).map(function (p) { return p.id; });
       var ok = t >= earliest && free.length >= guests && (providerId === 'any' || free.indexOf(providerId) >= 0);
       var chosen = [];
       if (ok) {
@@ -149,12 +150,16 @@
      * @param {number} mins     total visit length per guest
      * @param {string} providerId provider id or 'any'
      * @param {number} guests   1..maxGuests (each guest needs their own provider at the same time)
+     * @param {string[]} [services] service names: only providers set up for all of them
      * @returns {Promise<{closed:boolean, slots:Array<{time:string,label:string,available:boolean,providerIds:string[]}>}>}
      */
-    getAvailability: function (dateISO, mins, providerId, guests) {
+    getAvailability: function (dateISO, mins, providerId, guests, services) {
       sync();
-      return delay(slotsFor(dateISO, mins, providerId, guests));
+      return delay(slotsFor(dateISO, mins, providerId, guests, services));
     },
+
+    /** Is this provider set up for every one of these services? */
+    canDo: function (providerId, services) { return canDo(providerId, services); },
 
     /**
      * Creates a booking. Rejects with code 'taken' if the slot filled up meanwhile.
@@ -162,6 +167,7 @@
      */
     createBooking: function (payload) {
       sync();
+      if (payload.provider && payload.provider !== 'any' && !canDo(payload.provider, payload.services)) { return fail('not_qualified', 'That provider doesn’t do these services.'); }
       var start = toMin(payload.time);
       var clash = payload.providerIds.some(function (id) { return !isFree(busyFor(id, payload.date), start, start + payload.mins); });
       if (clash) { return fail('taken', 'That time was just taken.'); }
@@ -317,10 +323,23 @@
       sync();
       var list = allProviders();
       if (isNew) { list.push(p); } else { list = list.map(function (x) { return x.id === p.id ? Object.assign({}, x, p) : x; }); }
+      if (isNew) { var q = allQualified(); q[p.id] = []; db.qualified = q; } // new providers start with no services
       db.providers = list.sort(function (a, b) { return a.sort - b.sort; });
       CFG.providers = db.providers.filter(function (x) { return x.active; });
       save();
       return delay(p);
+    },
+
+    // ======== who does which services (managers) ========
+
+    /** { providerId: [serviceId, ...] } for every provider. */
+    listQualifications: function () { sync(); return delay(allQualified()); },
+
+    setQualifications: function (providerId, serviceIds) {
+      sync();
+      var q = allQualified(); q[providerId] = serviceIds.slice(); db.qualified = q;
+      CFG.qualified = qualifiedNames(); save();
+      return delay(true);
     },
 
     // ======== staff logins (managers) ========
@@ -358,7 +377,7 @@
       var list = allServices();
       var clash = list.filter(function (x) { return x.name.toLowerCase() === s.name.toLowerCase() && x.id !== s.id; })[0];
       if (clash) { return fail('duplicate', 'There’s already a service called ' + clash.name + '.'); }
-      if (isNew) { s.id = list.reduce(function (m, x) { return Math.max(m, x.id); }, 0) + 1; list.push(s); }
+      if (isNew) { db.qualified = allQualified(); s.id = list.reduce(function (m, x) { return Math.max(m, x.id); }, 0) + 1; list.push(s); } // no one does a new service yet
       else { list = list.map(function (x) { return x.id === s.id ? Object.assign({}, x, s) : x; }); }
       setServices(list);
       return delay(s);
@@ -449,7 +468,7 @@
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; delete db.clientSession; save();
-      if (db.providers || db.services || db.categoryOrder || db.staffList) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; save(); location.reload(); }
+      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; save(); location.reload(); }
       return delay(true);
     },
   };
@@ -478,6 +497,26 @@
     c = db.clients.filter(function (x) { return x.email === em; })[0];
     if (!c) { c = { id: newId('C'), name: nm, phone: ph, email: em, staffNote: '' }; db.clients.push(c); }
     return c.id;
+  }
+
+  // Qualifications. Stored as service ids per provider; until a manager edits
+  // them, every provider does every service.
+  function allQualified() {
+    if (db.qualified) { return clone(db.qualified); }
+    var ids = allServices().map(function (s) { return s.id; }), q = {};
+    allProviders().forEach(function (p) { q[p.id] = ids.slice(); });
+    return q;
+  }
+  function qualifiedNames() {
+    var byId = {}, q = allQualified(), out = {};
+    allServices().forEach(function (s) { byId[s.id] = s.name; });
+    Object.keys(q).forEach(function (pid) { out[pid] = q[pid].map(function (id) { return byId[id]; }).filter(Boolean); });
+    return out;
+  }
+  function canDo(providerId, services) {
+    if (!services || !services.length || !CFG.qualified) { return true; }
+    var mine = CFG.qualified[providerId] || [];
+    return services.every(function (n) { return mine.indexOf(n) >= 0; });
   }
 
   function demoStaff() {

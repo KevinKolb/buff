@@ -62,8 +62,11 @@
     return unwrap(res);
   }
 
-  function availability(dateISO, mins, providerId, guests) {
-    return sb.rpc('get_availability', { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests }).then(unwrap).then(function (res) {
+  function availability(dateISO, mins, providerId, guests, services) {
+    var args = { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests };
+    // only once the provider-services table exists (older databases don't take this)
+    if (services && services.length && CFG.qualified) { args.p_services = services; }
+    return sb.rpc('get_availability', args).then(unwrap).then(function (res) {
       res.slots.forEach(function (s) { s.label = mock.formatTime(toMin(s.time)); });
       return res;
     });
@@ -79,6 +82,8 @@
     sb.from('business_hours').select('*').then(unwrap),
     sb.from('providers').select('*').eq('active', true).order('sort').then(unwrap),
     sb.from('services').select('*').eq('active', true).order('sort').then(unwrap),
+    // who does which services; null if that table isn't set up yet (then no filtering)
+    sb.from('provider_services').select('provider_id,service_id').then(function (res) { return res.error ? null : res.data; }),
   ]).then(function (r) {
     var s = r[0];
     CFG.booking.slotStepMinutes = s.slot_step_min;
@@ -92,7 +97,17 @@
     CFG.hours = hours;
     CFG.providers = r[2].map(function (p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb }; });
     CFG.services = r[3].map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } return o; });
+    CFG.qualified = qualifiedFrom(r[4], r[3]);
   });
+
+  function qualifiedFrom(rows, services) {
+    if (!rows) { return null; }
+    var byId = {}, out = {};
+    services.forEach(function (v) { byId[v.id] = v.name; });
+    CFG.providers.forEach(function (p) { out[p.id] = []; });
+    rows.forEach(function (r) { if (byId[r.service_id]) { (out[r.provider_id] = out[r.provider_id] || []).push(byId[r.service_id]); } });
+    return out;
+  }
   ready.catch(function (err) {
     console.error('[Buff] could not load from Supabase', err);
     var main = document.querySelector('main');
@@ -109,6 +124,7 @@
     ready: ready,
     formatTime: mock.formatTime,
     toMin: mock.toMin,
+    canDo: mock.canDo,
 
     // ======== client booking ========
     getAvailability: availability,
@@ -275,6 +291,26 @@
         CFG.providers = rows.map(function (x) { return { id: x.id, name: x.name, initials: x.initials, blurb: x.blurb }; });
         return p;
       });
+    },
+
+    // ======== who does which services (managers) ========
+
+    listQualifications: function () {
+      return sb.from('provider_services').select('provider_id,service_id').then(unwrap).then(function (rows) {
+        var q = {};
+        rows.forEach(function (r) { (q[r.provider_id] = q[r.provider_id] || []).push(r.service_id); });
+        return q;
+      });
+    },
+
+    setQualifications: function (providerId, serviceIds) {
+      return sb.from('provider_services').delete().eq('provider_id', providerId).then(unwrap).then(function () {
+        if (!serviceIds.length) { return null; }
+        return sb.from('provider_services').insert(serviceIds.map(function (id) { return { provider_id: providerId, service_id: id }; })).then(unwrap);
+      }).then(function () {
+        // keep this page's copy in step
+        return Promise.all([sb.from('provider_services').select('provider_id,service_id').then(unwrap), sb.from('services').select('id,name').eq('active', true).then(unwrap)]);
+      }).then(function (r) { CFG.qualified = qualifiedFrom(r[0], r[1]); return true; });
     },
 
     // ======== staff logins (managers) ========

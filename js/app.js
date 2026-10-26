@@ -82,7 +82,7 @@ window.BuffAPI.ready.then(function () {
     render();
     var t = totals();
     var reqDate = state.date;
-    API.getAvailability(reqDate, t.mins, state.provider, state.guests).then(function (res) {
+    API.getAvailability(reqDate, t.mins, state.provider, state.guests, state.selected).then(function (res) {
       if (reqDate !== state.date) { return; } // a newer request is in flight
       state.slots = res; state.slotsLoading = false;
       render();
@@ -124,6 +124,7 @@ window.BuffAPI.ready.then(function () {
         '</div>' +
       '</div>' +
       (state.guests > 1 ? '<p class="muted sm center">Each guest gets the same services, side by side. Need something different for each? Add a note at checkout.</p>' : '') +
+      (comboProblem() ? '<p class="notice" role="alert">' + esc(comboProblem()) + '</p>' : '') +
       '<div class="chips" role="toolbar" aria-label="Service categories">' + chips + '</div>' +
       '<ul class="card list" aria-label="' + esc(state.cat) + ' services">' + rows + '</ul>' +
       '<p class="muted sm center">Nail art, extra styling time or something not listed? Add a note at checkout.</p>' +
@@ -133,8 +134,26 @@ window.BuffAPI.ready.then(function () {
           '<a class="link center" href="manage.html">Already booked? Change or cancel</a>');
   }
 
+  // providers set up for every selected service
+  function qualifiedPros() { return CFG.providers.filter(function (p) { return API.canDo(p.id, state.selected); }); }
+  // why the chosen services can't be booked together, or null
+  function comboProblem() {
+    if (!state.selected.length) { return null; }
+    var n = qualifiedPros().length;
+    if (n === 0) {
+      return state.selected.length > 1
+        ? 'None of our providers does all of these in one visit. Please book them as separate visits, or call us.'
+        : 'This service isn’t bookable online right now. Please call us.';
+    }
+    if (n < state.guests) {
+      return (n === 1 ? 'Only one of our providers does' : 'Only ' + n + ' of our providers do') + (state.selected.length > 1 ? ' all of these' : ' this') +
+        ', so we can book up to ' + n + ' guest' + (n === 1 ? '' : 's') + ' at once.';
+    }
+    return null;
+  }
+
   function viewProvider() {
-    var opts = [{ id: 'any', name: 'First available', initials: '', blurb: 'Most openings' }].concat(CFG.providers);
+    var opts = [{ id: 'any', name: 'First available', initials: '', blurb: 'Most openings' }].concat(qualifiedPros());
     var rows = opts.map(function (p) {
       var on = state.provider === p.id;
       return '<li><button class="pro' + (on ? ' is-on' : '') + '" data-act="pro" data-v="' + p.id + '" aria-pressed="' + on + '">' +
@@ -142,7 +161,9 @@ window.BuffAPI.ready.then(function () {
         '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + '</span></span>' +
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
     }).join('');
+    var hidden = CFG.providers.length - qualifiedPros().length;
     return '<h1 class="h1">Who would you like?</h1>' +
+      (hidden ? '<p class="muted sm">Showing the providers who do ' + (state.selected.length > 1 ? 'all of ' : '') + esc(state.selected.join(' + ')) + '.</p>' : '') +
       (state.guests > 1 ? '<p class="muted sm">With ' + state.guests + ' guests, your pick is for you — we’ll pair your guests with other pros working at the same time.</p>' : '') +
       '<ul class="stack">' + rows + '</ul>';
   }
@@ -255,7 +276,7 @@ window.BuffAPI.ready.then(function () {
 
   // ---------- render ----------
   function canContinue() {
-    if (state.step === 1) { return state.selected.length > 0; }
+    if (state.step === 1) { return state.selected.length > 0 && !comboProblem(); }
     if (state.step === 2) { return true; }
     if (state.step === 3) { return !!state.slot || state.waitlist; }
     if (state.step === 4) { return !state.submitting; }
@@ -304,6 +325,7 @@ window.BuffAPI.ready.then(function () {
     else if (act === 'svc') {
       var i = state.selected.indexOf(v);
       if (i >= 0) { state.selected.splice(i, 1); } else { state.selected.push(v); }
+      if (state.provider !== 'any' && !API.canDo(state.provider, state.selected)) { state.provider = 'any'; } // they don't do the new mix
       state.slots = null; state.slot = null; render();
     }
     else if (act === 'guests') { state.guests = Math.max(1, Math.min(CFG.booking.maxGuests, state.guests + +v)); state.slots = null; state.slot = null; render(); }
@@ -395,7 +417,7 @@ window.BuffAPI.ready.then(function () {
     p.then(function (res) { state.submitting = false; state.result = res; go(5); }, function (err) {
       state.submitting = false;
       if (err.code === 'taken') { state.notice = 'Sorry, that time was just booked. Please pick another.'; go(3, { replace: true }); loadSlots(); return; }
-      state.errors = { form: 'Something went wrong. Please try again or call us.' }; render();
+      state.errors = { form: err.code === 'not_qualified' ? 'That provider doesn’t do these services. Go back and pick someone else or First available.' : 'Something went wrong. Please try again or call us.' }; render();
     });
   }
 

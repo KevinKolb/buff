@@ -79,7 +79,7 @@ window.BuffAPI.ready.then(function () {
     if (!state.selected.length) { state.slots = null; render(); return; }
     var d = state.date, t = totals();
     state.slotsLoading = true; render();
-    API.getAvailability(d, t.mins, state.provider, state.guests).then(function (res) {
+    API.getAvailability(d, t.mins, state.provider, state.guests, state.selected).then(function (res) {
       if (d !== state.date) { return; }
       state.slots = res; state.slotsLoading = false; render();
     }, function () {
@@ -122,11 +122,14 @@ window.BuffAPI.ready.then(function () {
   }
 
   function viewWhen() {
-    var pros = [['any', 'First available']].concat(CFG.providers.map(function (p) { return [p.id, p.name]; })).map(function (p) {
+    var able = CFG.providers.filter(function (p) { return API.canDo(p.id, state.selected); });
+    var pros = [['any', 'First available']].concat(able.map(function (p) { return [p.id, p.name]; })).map(function (p) {
       return '<option value="' + esc(p[0]) + '"' + (p[0] === state.provider ? ' selected' : '') + '>' + esc(p[1]) + '</option>';
     }).join('');
     var body;
     if (!state.selected.length) { body = '<p class="muted sm">Pick services to see open times.</p>'; }
+    else if (!able.length) { body = '<p class="notice">No provider is set up for ' + (state.selected.length > 1 ? 'all of ' : '') + esc(state.selected.join(' + ')) + '. Book them as separate visits, or a manager can change who does what on the Team tab.</p>'; }
+    else if (able.length < state.guests) { body = '<p class="notice">Only ' + able.length + ' provider' + (able.length === 1 ? ' does' : 's do') + ' this, so you can book up to ' + able.length + ' guest' + (able.length === 1 ? '' : 's') + ' at once.</p>'; }
     else if (state.slotsLoading || !state.slots) { body = '<p class="muted sm" role="status">Finding open times…</p>'; }
     else if (state.slots.error) { body = '<p class="muted sm">Couldn’t load open times. <button class="link sm" data-act="retry">Try again</button></p>'; }
     else if (state.slots.closed) { body = '<p class="muted sm">Closed this day.</p>'; }
@@ -140,7 +143,8 @@ window.BuffAPI.ready.then(function () {
         : '<p class="muted sm">No openings this day for ' + totals().mins + ' minutes' + (state.guests > 1 ? ' and ' + state.guests + ' guests' : '') + '. Try another day or provider.</p>';
     }
     return '<div class="card form bk-when"><div class="b">2. Provider, day and time</div>' +
-      '<div class="field"><label for="bk-pro">Provider</label><select id="bk-pro" name="provider">' + pros + '</select></div>' +
+      '<div class="field"><label for="bk-pro">Provider</label><select id="bk-pro" name="provider">' + pros + '</select>' +
+        (state.selected.length && able.length < CFG.providers.length ? '<span class="muted xs">Only providers set up for ' + (state.selected.length > 1 ? 'all of these services' : 'this service') + ' are listed.</span>' : '') + '</div>' +
       '<div class="field"><label for="bk-date">Day</label><div class="bk-datenav">' +
         '<button class="round" data-act="day" data-v="-1" aria-label="Previous day"' + (state.date <= isoDate(new Date()) ? ' disabled' : '') + '>‹</button>' +
         '<input id="bk-date" name="date" type="date" min="' + isoDate(new Date()) + '" value="' + esc(state.date) + '">' +
@@ -395,6 +399,7 @@ window.BuffAPI.ready.then(function () {
       if (err.code === 'taken') { state.notice = 'That time was just booked. Please pick another.'; loadSlots(); loadDay(); return; }
       var msg = {
         not_allowed: 'Your login doesn’t have the Reservationist or Manager role.',
+        not_qualified: 'That provider isn’t set up for these services. Pick someone else or First available.',
         policy_required: 'Tick the cancellation policy box.',
         invalid_client: 'Check the client’s name, mobile and email.',
         invalid_services: 'One of those services is no longer on the menu. Refresh the page.',
@@ -415,6 +420,7 @@ window.BuffAPI.ready.then(function () {
     else if (act === 'svc') {
       var i = state.selected.indexOf(v);
       if (i >= 0) { state.selected.splice(i, 1); } else { state.selected.push(v); }
+      if (state.provider !== 'any' && !API.canDo(state.provider, state.selected)) { state.provider = 'any'; }
       loadSlots();
     }
     else if (act === 'guests') { state.guests = Math.max(1, Math.min(CFG.booking.maxGuests, state.guests + +v)); loadSlots(); }

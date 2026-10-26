@@ -169,3 +169,12 @@
 .field textarea { border-radius: 10px; border: 1px solid var(--border); padding: 10px 12px; font-size: 16px; font-family: inherit; background: #fff; color: var(--ink); resize: vertical; width: 100%; }
 .bk-match.is-active { background: var(--blush); }
 .bk-match mark { background: #F5D3BE; color: inherit; border-radius: 3px; padding: 0 1px; }
+/* Team tab: services each provider does */
+.s-quals { border-top: 1px solid var(--line-soft); padding-top: 8px; }
+.s-quals > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer; font-size: 14px; }
+.s-quals[open] > summary { margin-bottom: 4px; }
+.s-qcat { border: none; margin: 0 0 8px; padding: 0; }
+.s-qcat legend { padding: 0; }
+.s-qlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0 12px; padding-left: 30px; }
+.s-qlist .agree, .s-qcat legend .agree { padding: 3px 0; align-items: center; font-size: 13px; }
+.s-warn { color: var(--err); font-weight: 600; }
