@@ -107,7 +107,7 @@
     return true;
   }
 
-  function slotsFor(dateISO, mins, providerId, guests, staff) {
+  function slotsFor(dateISO, mins, providerId, guests) {
     var hrs = hoursOn(dateISO);
     if (!hrs) { return { closed: true, slots: [] }; }
     var busyMap = {};
@@ -116,7 +116,7 @@
     var now = new Date(), d = new Date(dateISO + 'T00:00:00');
     var isToday = now.toDateString() === d.toDateString();
     var earliest = d < new Date(now.toDateString()) ? Infinity
-      : isToday ? now.getHours() * 60 + now.getMinutes() + (staff ? 0 : CFG.booking.minNoticeMinutes) : 0;
+      : isToday ? now.getHours() * 60 + now.getMinutes() + CFG.booking.minNoticeMinutes : 0;
 
     var slots = [];
     for (var t = hrs.open; t + mins <= hrs.close; t += CFG.booking.slotStepMinutes) {
@@ -148,12 +148,11 @@
      * @param {number} mins     total visit length per guest
      * @param {string} providerId provider id or 'any'
      * @param {number} guests   1..maxGuests (each guest needs their own provider at the same time)
-     * @param {boolean} [staff] booking at the front desk: no minimum notice
      * @returns {Promise<{closed:boolean, slots:Array<{time:string,label:string,available:boolean,providerIds:string[]}>}>}
      */
-    getAvailability: function (dateISO, mins, providerId, guests, staff) {
+    getAvailability: function (dateISO, mins, providerId, guests) {
       sync();
-      return delay(slotsFor(dateISO, mins, providerId, guests, staff));
+      return delay(slotsFor(dateISO, mins, providerId, guests));
     },
 
     /**
@@ -171,9 +170,16 @@
       return delay(rec);
     },
 
-    /** Front desk books for a phone or walk-in client: email optional, no minimum notice. */
+    /**
+     * Staff book for a client (book.html): managers and reservationists only.
+     * Same rules as online, plus the cancellation policy must be confirmed.
+     */
     staffCreateBooking: function (payload) {
       var api = this;
+      var roles = demoStaff().roles;
+      if (roles.indexOf('manager') < 0 && roles.indexOf('reservationist') < 0) { return fail('not_allowed', 'Not allowed.'); }
+      if (!payload.policyAgreed) { return fail('policy_required', 'Policy not confirmed.'); }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((payload.client && payload.client.email) || '')) { return fail('invalid_client', 'Email required.'); }
       return api.createBooking(payload).then(function (rec) {
         sync();
         var b = db.bookings.filter(function (x) { return x.id === rec.id; })[0];
@@ -208,8 +214,10 @@
       return delay(b);
     },
 
-    // ======== staff sign-in (demo: everyone is the manager) ========
-    getStaff: function () { return delay({ email: 'demo', role: 'manager' }); },
+    // ======== staff sign-in ========
+    // Demo: you're a manager. Add ?as=reservationist or ?as=provider (or
+    // ?as=manager,provider) to a staff page's address to preview other roles.
+    getStaff: function () { return delay(demoStaff()); },
     signIn: function () { return delay(true); },
     signOut: function () { return delay(true); },
 
@@ -308,6 +316,27 @@
       return delay(p);
     },
 
+    // ======== staff logins (managers) ========
+
+    /** Everyone on the staff list: [{ email, roles: [...], providerId }]. */
+    listStaff: function () { sync(); return delay(allStaff()); },
+
+    saveStaff: function (s, isNew) {
+      sync();
+      var list = allStaff(), email = s.email.trim().toLowerCase();
+      if (isNew && list.some(function (x) { return x.email === email; })) { return fail('duplicate', email + ' is already on the staff list.'); }
+      var rec = { email: email, roles: s.roles.slice(), providerId: s.roles.indexOf('provider') >= 0 ? (s.providerId || null) : null };
+      db.staffList = isNew ? list.concat(rec) : list.map(function (x) { return x.email === email ? rec : x; });
+      save();
+      return delay(rec);
+    },
+
+    removeStaff: function (email) {
+      sync();
+      db.staffList = allStaff().filter(function (x) { return x.email !== email; }); save();
+      return delay(true);
+    },
+
     // ======== menu (managers) ========
 
     /** { services: every service incl. hidden, in order; categories: ordered names (may include empty ones) } */
@@ -355,13 +384,23 @@
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; save();
-      if (db.providers || db.services || db.categoryOrder) { delete db.providers; delete db.services; delete db.categoryOrder; save(); location.reload(); }
+      if (db.providers || db.services || db.categoryOrder || db.staffList) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; save(); location.reload(); }
       return delay(true);
     },
   };
 
   function allProviders() {
     return clone(db.providers || CFG.providers.map(function (p, i) { return Object.assign({ sort: i, active: true }, p); }));
+  }
+
+  function demoStaff() {
+    var as = new URLSearchParams(location.search).get('as');
+    var roles = as ? as.split(',').filter(function (r) { return ['manager', 'reservationist', 'provider'].indexOf(r) >= 0; }) : ['manager'];
+    if (!roles.length) { roles = ['manager']; }
+    return { email: 'demo', roles: roles, providerId: roles.indexOf('provider') >= 0 ? CFG.providers[0].id : null };
+  }
+  function allStaff() {
+    return clone(db.staffList || [{ email: 'demo', roles: ['manager'], providerId: null }]);
   }
 
   function allServices() {

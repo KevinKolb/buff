@@ -44,7 +44,12 @@ window.BuffAPI.ready.then(function () {
   function hoursOn(iso) { var h = CFG.hours[fromISO(iso).getDay()]; return h ? { open: API.toMin(h.open), close: API.toMin(h.close) } : null; }
   function fmt(m) { return API.formatTime(m); }
   function range(t) { return t.allDay ? 'All day' : fmt(t.start) + ' – ' + fmt(t.end); }
-  function isManager() { return state.staff && state.staff.role === 'manager'; }
+  // Roles: one login can hold several. Managers can do everything.
+  var ROLES = [['manager', 'Manager'], ['reservationist', 'Reservationist'], ['provider', 'Service provider']];
+  function roleLabel(r) { return (ROLES.filter(function (x) { return x[0] === r; })[0] || [r, r])[1]; }
+  function hasRole(r) { return !!(state.staff && state.staff.roles && state.staff.roles.indexOf(r) >= 0); }
+  function isManager() { return hasRole('manager'); }
+  function canBook() { return hasRole('manager') || hasRole('reservationist'); }
   var STATUS = { booked: 'Booked', arrived: 'Checked in', 'no-show': 'No-show', cancelled: 'Cancelled' };
 
   // ---------- data ----------
@@ -192,9 +197,10 @@ window.BuffAPI.ready.then(function () {
   // ---------- time off ----------
   function viewTimeOff() {
     var f = state.form;
-    var own = state.staff && state.staff.role === 'provider' && state.staff.providerId;
+    var own = !isManager() && state.staff && state.staff.providerId; // providers request only for themselves
     var pros = CFG.providers.filter(function (p) { return !own || p.id === own; }).map(function (p) { return '<option value="' + p.id + '"' + (p.id === f.providerId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('');
-    var form = '<form id="to-form" class="card form" novalidate>' +
+    var mayRequest = isManager() || !!own;
+    var form = !mayRequest ? '<div class="card pad-sm muted sm">Providers request their own time off here, and managers approve it.</div>' : '<form id="to-form" class="card form" novalidate>' +
       '<div class="b">Request time off</div>' +
       '<div class="field"><label for="to-pro">Provider</label><select id="to-pro" name="providerId">' + pros + '</select></div>' +
       '<div class="field"><label for="to-date">Date</label><input id="to-date" name="date" type="date" min="' + isoDate(new Date()) + '" value="' + esc(f.date) + '"></div>' +
@@ -244,7 +250,80 @@ window.BuffAPI.ready.then(function () {
 
   // ---------- team (managers) ----------
   function loadTeam() {
-    return API.listProviders().then(function (list) { state.team = list; render(); });
+    return Promise.all([API.listProviders(), API.listStaff()]).then(function (r) { state.team = r[0]; state.staffList = r[1]; render(); });
+  }
+
+  // ----- staff logins (who can sign in, and with which roles) -----
+  function staffBase(key) {
+    if (key === 'st:new') { return { email: '', roles: [], providerId: '' }; }
+    var s = state.staffList.filter(function (x) { return 'st:' + x.email === key; })[0];
+    return { email: s.email, roles: s.roles.slice(), providerId: s.providerId || '' };
+  }
+  function staffDraft(key) { return state.drafts[key] || staffBase(key); }
+
+  function staffFields(key, d) {
+    var id = key.replace(/[^a-z0-9]/gi, '-');
+    var boxes = ROLES.map(function (r) {
+      return '<label class="agree s-role"><input type="checkbox" data-staff="' + esc(key) + '" name="role" value="' + r[0] + '"' + (d.roles.indexOf(r[0]) >= 0 ? ' checked' : '') + '><span>' + r[1] + '</span></label>';
+    }).join('');
+    var link = d.roles.indexOf('provider') >= 0
+      ? '<div class="field"><label for="st-pro-' + id + '">Their column on the schedule</label><select id="st-pro-' + id + '" data-staff="' + esc(key) + '" name="providerId">' +
+          '<option value="">Choose…</option>' + (state.team || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === d.providerId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
+        '</select></div>'
+      : '';
+    return '<div class="s-roles" role="group" aria-label="Roles">' + boxes + '</div>' + link;
+  }
+
+  function viewStaffLogins() {
+    var rows = (state.staffList || []).map(function (s) {
+      var key = 'st:' + s.email, d = staffDraft(key), dirty = !!state.drafts[key], me = state.staff && s.email === state.staff.email;
+      return '<li class="s-login">' +
+        '<div class="b s-email">' + esc(s.email) + (me ? ' <span class="muted xs">(you)</span>' : '') + '</div>' +
+        staffFields(key, d) + msgLine(key) +
+        '<div class="row-wrap"><button class="btn-primary sm" data-act="st-save" data-k="' + esc(s.email) + '"' + (dirty ? '' : ' disabled') + '>Save</button>' +
+          (dirty ? '<button class="link sm" data-act="st-undo" data-k="' + esc(s.email) + '">Undo</button>' : '') +
+          (me ? '' : '<button class="btn-text-danger sm s-push" data-act="st-remove" data-k="' + esc(s.email) + '">Remove</button>') + '</div>' +
+      '</li>';
+    }).join('');
+    var nd = staffDraft('st:new');
+    return '<div class="card form"><div class="b">Staff logins</div>' +
+      '<p class="muted xs">Who can sign in to the front desk, and what they can do. One person can have more than one role. ' +
+        '<b>Manager:</b> everything. <b>Reservationist:</b> book clients, schedule, waitlist. <b>Service provider:</b> their schedule and time off requests.</p>' +
+      '<ul class="stack s-logins">' + rows + '</ul>' +
+      '<div class="s-login s-login-add"><div class="field"><label for="st-new-email">Add someone: their email</label>' +
+        '<input id="st-new-email" data-staff="st:new" name="email" type="email" autocomplete="off" placeholder="name@email.com" value="' + esc(nd.email) + '"></div>' +
+        staffFields('st:new', nd) + msgLine('st:new') +
+        '<button class="btn-primary" data-act="st-add">Add login</button>' +
+        '<p class="muted xs">They sign in with an emailed link. Until custom email is set up, Supabase only emails members of your Supabase organization, so invite them there too.</p></div>' +
+    '</div>';
+  }
+
+  function checkStaff(key, d, isNew) {
+    if (isNew && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(d.email || '').trim())) { return 'Please enter their email.'; }
+    if (!d.roles.length) { return 'Pick at least one role.'; }
+    if (d.roles.indexOf('provider') >= 0 && !d.providerId) { return 'Pick their column on the schedule.'; }
+    var me = state.staff && d.email === state.staff.email;
+    if (me && isManager() && d.roles.indexOf('manager') < 0) { return 'You can’t remove your own manager role. Ask another manager.'; }
+    return null;
+  }
+
+  function staffAction(act, email) {
+    var key = act === 'st-add' ? 'st:new' : 'st:' + email, d = staffDraft(key);
+    if (act === 'st-undo') { delete state.drafts[key]; delete state.teamMsg[key]; render(); return; }
+    if (act === 'st-remove') {
+      if (!confirm('Remove ' + email + ' from the staff list? They won’t be able to use the front desk.')) { return; }
+      API.removeStaff(email).then(function () { delete state.drafts[key]; return loadTeam(); }, function () { state.teamMsg[key] = { err: true, text: 'Couldn’t remove. Try again.' }; render(); });
+      return;
+    }
+    var isNew = act === 'st-add', err = checkStaff(key, d, isNew);
+    if (err) { state.teamMsg[key] = { err: true, text: err }; render(); return; }
+    state.teamMsg[key] = { text: 'Saving…' }; render();
+    API.saveStaff({ email: String(d.email).trim().toLowerCase(), roles: d.roles, providerId: d.providerId || null }, isNew).then(function () {
+      delete state.drafts[key];
+      state.teamMsg[key] = { text: isNew ? 'Added. They can sign in now.' : 'Saved.' };
+      if (isNew) { state.teamMsg['st:' + String(d.email).trim().toLowerCase()] = { text: 'Added. They can sign in now.' }; delete state.teamMsg[key]; }
+      return loadTeam();
+    }, function (e) { state.teamMsg[key] = { err: true, text: e && e.code === 'duplicate' ? e.message : 'Couldn’t save. Check your connection and try again.' }; render(); });
   }
 
   function draftFor(p) {
@@ -287,7 +366,7 @@ window.BuffAPI.ready.then(function () {
       '<button class="btn-primary" data-act="tm-add">Add provider</button></div>';
     return '<h1 class="h1">Team</h1>' +
       '<p class="muted sm">Names and descriptions show on the booking page and the schedule. Hide someone who has left instead of deleting them, so their past bookings keep their name.</p>' +
-      '<div class="s-two"><section class="s-lists"><ul class="stack">' + cards + '</ul></section><section>' + add + '</section></div>';
+      '<div class="s-two"><section class="s-lists"><ul class="stack">' + cards + '</ul></section><section class="s-lists">' + add + viewStaffLogins() + '</section></div>';
   }
 
   function cleanDraft(d) {
@@ -548,8 +627,9 @@ window.BuffAPI.ready.then(function () {
   function checkAuth() {
     return API.getStaff().then(function (s) {
       state.staff = s;
-      state.auth = !s ? 'signin' : s.role ? 'ok' : 'denied';
-      if (s && s.role === 'provider' && s.providerId) { state.form.providerId = s.providerId; }
+      state.auth = !s ? 'signin' : (s.roles && s.roles.length) ? 'ok' : 'denied';
+      if (s && !hasRole('manager') && s.providerId) { state.form.providerId = s.providerId; }
+      if (state.auth === 'ok' && !tabAllowed(state.tab)) { state.tab = 'schedule'; }
       render();
       if (state.auth === 'ok') {
         if (state.tab === 'team') { loadTeam(); }
@@ -562,17 +642,17 @@ window.BuffAPI.ready.then(function () {
   // ---------- render ----------
   function render() {
     var signedIn = state.auth === 'ok';
-    $('.s-book').href = 'index.html?for=staff&date=' + encodeURIComponent(state.date);
+    $('.s-book').href = 'book.html?date=' + encodeURIComponent(state.date);
+    $('.s-book').hidden = !signedIn || !canBook();
     $('.s-tabs').hidden = !signedIn;
     $('.proto-note').hidden = !signedIn;
     $('#signout').hidden = !signedIn || API.mode !== 'live';
     if (!signedIn) { $('#s-main').innerHTML = viewAuth(); return; }
     if (API.mode === 'live') {
-      $('.proto-note').innerHTML = 'Signed in as ' + esc(state.staff.email) + ' (' + esc(state.staff.role) + ').';
+      $('.proto-note').innerHTML = 'Signed in as ' + esc(state.staff.email) + ' (' + esc(state.staff.roles.map(roleLabel).join(', ')) + ').';
     }
 
-    $('[data-tab="team"]').hidden = !isManager();
-    $('[data-tab="menu"]').hidden = !isManager();
+    document.querySelectorAll('.s-tab').forEach(function (t) { t.hidden = !tabAllowed(t.getAttribute('data-tab')); });
     document.querySelectorAll('.s-tab').forEach(function (t) {
       var on = t.getAttribute('data-tab') === state.tab;
       t.classList.toggle('is-on', on);
@@ -603,7 +683,14 @@ window.BuffAPI.ready.then(function () {
     sched.scrollTop = Math.max(0, (m - hrs.open - 60) * PX);
   }
 
+  function tabAllowed(tab) {
+    if (tab === 'team' || tab === 'menu') { return isManager(); }
+    if (tab === 'waitlist') { return canBook(); }
+    return true; // schedule, time off
+  }
+
   function setTab(tab) {
+    if (!tabAllowed(tab)) { tab = 'schedule'; }
     state.tab = tab;
     if (tab === 'team' && !state.team) { loadTeam(); }
     if (tab === 'menu' && !state.menu) { loadMenu(); }
@@ -643,6 +730,7 @@ window.BuffAPI.ready.then(function () {
       el.disabled = true;
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
+    else if (/^st-/.test(act)) { staffAction(act, el.getAttribute('data-k')); }
     else if (act === 'mn-pick') { state.menuCat = el.getAttribute('data-k'); render(); }
     else if (act === 'mn-save') { saveSvc(el.getAttribute('data-k')); }
     else if (act === 'mn-undo') { var mk = 'svc:' + el.getAttribute('data-k'); delete state.drafts[mk]; delete state.teamMsg[mk]; render(); }
@@ -670,6 +758,19 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('change', onFormInput);
   function onFormInput(e) {
     var t = e.target;
+    var skey = t.getAttribute && t.getAttribute('data-staff');
+    if (skey) {
+      var sd = state.drafts[skey] = Object.assign({}, staffBase(skey), state.drafts[skey]);
+      sd.roles = sd.roles.slice();
+      if (t.name === 'role') {
+        var at = sd.roles.indexOf(t.value);
+        if (t.checked && at < 0) { sd.roles.push(t.value); } else if (!t.checked && at >= 0) { sd.roles.splice(at, 1); }
+      } else { sd[t.name] = t.value; }
+      delete state.teamMsg[skey];
+      if (e.type === 'change' && (t.type === 'checkbox' || t.tagName === 'SELECT')) { render(); }
+      else { var row = t.closest('.s-login'); var b = row && row.querySelector('[data-act="st-save"]'); if (b) { b.disabled = false; } }
+      return;
+    }
     var mkey = t.getAttribute && t.getAttribute('data-menu');
     if (mkey) {
       var md = state.drafts[mkey] = Object.assign({}, menuBase(mkey), state.drafts[mkey]);

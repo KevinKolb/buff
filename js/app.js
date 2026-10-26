@@ -31,15 +31,7 @@ window.BuffAPI.ready.then(function () {
     notice: null,          // shown on step 3, e.g. when a time was just taken
   };
 
-  // Staff mode (index.html?for=staff): the front desk booking for a phone or
-  // walk-in client. Email optional, no card or policy checkbox, no minimum
-  // notice. The database checks the person really is staff.
-  var params = new URLSearchParams(location.search);
-  var STAFF = params.get('for') === 'staff';
-  var presetDate = params.get('date');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(presetDate || '') && presetDate >= isoDate(new Date())) { state.date = presetDate; }
-
-  var STEP_LABELS = ['Services', 'Provider', 'Date & time', STAFF ? 'Client details' : 'Your details'];
+  var STEP_LABELS = ['Services', 'Provider', 'Date & time', 'Your details'];
 
   // ---------- helpers ----------
   function $(sel) { return document.querySelector(sel); }
@@ -89,7 +81,7 @@ window.BuffAPI.ready.then(function () {
     render();
     var t = totals();
     var reqDate = state.date;
-    API.getAvailability(reqDate, t.mins, state.provider, state.guests, STAFF).then(function (res) {
+    API.getAvailability(reqDate, t.mins, state.provider, state.guests).then(function (res) {
       if (reqDate !== state.date) { return; } // a newer request is in flight
       state.slots = res; state.slotsLoading = false;
       render();
@@ -121,7 +113,7 @@ window.BuffAPI.ready.then(function () {
         '<span class="tick">' + icon(on ? 'check' : 'plus') + '</span></button></li>';
     }).join('');
     return '' +
-      '<h1 class="h1">' + (STAFF ? 'What’s the client booking?' : 'What are we doing today?') + '</h1>' +
+      '<h1 class="h1">What are we doing today?</h1>' +
       '<div class="card row-between guests">' +
         '<div><div class="b">Who’s coming?</div><div class="muted sm">Up to ' + CFG.booking.maxGuests + ' people, same time</div></div>' +
         '<div class="stepper" role="group" aria-label="Number of guests">' +
@@ -146,7 +138,7 @@ window.BuffAPI.ready.then(function () {
         '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + '</span></span>' +
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
     }).join('');
-    return '<h1 class="h1">' + (STAFF ? 'Who would they like?' : 'Who would you like?') + '</h1>' +
+    return '<h1 class="h1">Who would you like?</h1>' +
       (state.guests > 1 ? '<p class="muted sm">With ' + state.guests + ' guests, your pick is for you — we’ll pair your guests with other pros working at the same time.</p>' : '') +
       '<ul class="stack">' + rows + '</ul>';
   }
@@ -187,7 +179,7 @@ window.BuffAPI.ready.then(function () {
       if (!avail.length) { body = '<p class="muted center pad">No openings this day for ' + totals().mins + ' minutes.</p>'; }
     }
 
-    var wl = !STAFF && state.date && state.slots && !state.slots.closed && !state.slots.error && !state.slotsLoading
+    var wl = state.date && state.slots && !state.slots.closed && !state.slots.error && !state.slotsLoading
       ? '<button class="ghost-dashed' + (state.waitlist ? ' is-on' : '') + '" data-act="waitlist" aria-pressed="' + state.waitlist + '">' + icon('clock') +
         (state.waitlist ? 'You’ll join the waitlist for ' + esc(longDate(state.date)) : 'Don’t see your time? Join the waitlist') + '</button>'
       : '';
@@ -209,7 +201,7 @@ window.BuffAPI.ready.then(function () {
   function summaryCard() {
     var t = totals();
     var when = state.waitlist ? longDate(state.date) + ' · waitlist' : longDate(state.date) + ' at ' + state.slot.label;
-    return '<div class="card summary"><div class="label">' + (STAFF ? 'Visit' : 'Your visit') + '</div>' +
+    return '<div class="card summary"><div class="label">Your visit</div>' +
       '<div class="b lg">' + esc(when) + '</div>' +
       '<div>' + esc(state.selected.join(' + ')) + '</div>' +
       '<div class="muted sm">' + esc(providerName(state.provider)) + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + ' · ' + money(t.price) + '</div></div>';
@@ -217,20 +209,7 @@ window.BuffAPI.ready.then(function () {
 
   var changeLink = '<button class="link sm change-link" data-act="change-time">Change date or time</button>';
 
-  function viewDetailsStaff() {
-    return '<h1 class="h1">Client details</h1>' + summaryCard() + changeLink +
-      '<form id="details" class="card form" novalidate>' +
-        field('name', 'Client name', 'text', 'off', 'First and last') +
-        field('phone', 'Mobile', 'tel', 'off', '(504) 555-0123', 'So we can reach them about the visit') +
-        field('email', 'Email (optional)', 'email', 'off', 'client@email.com') +
-        field('note', 'Note (optional)', 'text', 'off', 'Nail art idea, guest names…') +
-      '</form>' +
-      '<p class="muted xs">Let them know about the cancellation policy: cancellations within ' + CFG.business.cancellationWindowHours + ' hours or no-shows may be charged.</p>' +
-      (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
-  }
-
   function viewDetails() {
-    if (STAFF) { return viewDetailsStaff(); }
     var agreeErr = state.errors.agree;
     return '<h1 class="h1">Almost done</h1>' + summaryCard() + changeLink +
       '<form id="details" class="card form" novalidate>' +
@@ -251,20 +230,7 @@ window.BuffAPI.ready.then(function () {
       (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
   }
 
-  function viewDoneStaff() {
-    var r = state.result;
-    var back = 'staff.html?date=' + encodeURIComponent(state.date);
-    return '<div class="done">' +
-      '<div class="done-badge">' + icon('check') + '</div>' +
-      '<h1 class="h1 center">Booked for ' + esc(state.client.name.trim()) + '</h1>' +
-      '<p class="center muted">Read them their reference: <b>' + esc(r.id) + '</b>. They can use it with their mobile number to cancel online.</p>' +
-      summaryCard() +
-      '<a class="btn-primary as-link" href="' + back + '">Back to the schedule</a>' +
-      '<button class="link" data-act="restart">Book another client</button></div>';
-  }
-
   function viewDone() {
-    if (STAFF) { return viewDoneStaff(); }
     var r = state.result;
     var wl = state.waitlist;
     return '<div class="done">' +
@@ -316,7 +282,7 @@ window.BuffAPI.ready.then(function () {
       $('#foot-total').textContent = money(t.price);
       var btn = $('#next');
       btn.disabled = !canContinue();
-      btn.textContent = s === 4 ? (state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : (STAFF ? 'Book for client' : 'Book now'))) : 'Continue';
+      btn.textContent = s === 4 ? (state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : 'Book now')) : 'Continue';
     }
   }
 
@@ -393,13 +359,6 @@ window.BuffAPI.ready.then(function () {
 
   function validate() {
     var c = state.client, e = {};
-    if (STAFF) {
-      if (c.name.trim().length < 2) { e.name = 'Please enter the client’s name.'; }
-      if (c.phone.replace(/\D/g, '').length < 10) { e.phone = 'Please enter a 10-digit mobile number.'; }
-      if (c.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.trim())) { e.email = 'That email doesn’t look right. Leave it blank if they don’t have one.'; }
-      state.errors = e;
-      return Object.keys(e).length === 0;
-    }
     if (c.name.trim().split(/\s+/).length < 2) { e.name = 'Please enter your first and last name.'; }
     if (c.phone.replace(/\D/g, '').length < 10) { e.phone = 'Please enter a 10-digit mobile number.'; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.trim())) { e.email = 'Please enter a valid email.'; }
@@ -419,16 +378,15 @@ window.BuffAPI.ready.then(function () {
     var t = totals();
     var payload = {
       services: state.selected.slice(), guests: state.guests, mins: t.mins, total: t.price,
-      provider: state.provider, date: state.date,
+      provider: state.provider, date: state.date, policyAgreed: !!state.client.agree,
       client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim() },
     };
-    var book = STAFF ? API.staffCreateBooking : API.createBooking;
     var p = state.waitlist ? API.joinWaitlist(payload)
-      : book.call(API, Object.assign(payload, { time: state.slot.time, providerIds: state.slot.providerIds }));
+      : API.createBooking(Object.assign(payload, { time: state.slot.time, providerIds: state.slot.providerIds }));
     p.then(function (res) { state.submitting = false; state.result = res; go(5); }, function (err) {
       state.submitting = false;
       if (err.code === 'taken') { state.notice = 'Sorry, that time was just booked. Please pick another.'; go(3, { replace: true }); loadSlots(); return; }
-      state.errors = { form: STAFF && err.code === 'not_staff' ? 'You’re not signed in as staff. Sign in at the front desk, then try again.' : 'Something went wrong. Please try again or call us.' }; render();
+      state.errors = { form: 'Something went wrong. Please try again or call us.' }; render();
     });
   }
 
@@ -456,22 +414,5 @@ window.BuffAPI.ready.then(function () {
     render();
   }
 
-  if (!STAFF) { start(); return; }
-
-  // Staff mode: banner back to the front desk, and only for signed-in staff.
-  document.title = 'Book for a client · Buff Beauty Bar';
-  var bar = document.createElement('div');
-  bar.className = 'staff-bar';
-  bar.innerHTML = '<span>Front desk booking</span><a href="staff.html' + (state.date ? '?date=' + state.date : '') + '">‹ Back to schedule</a>';
-  $('#progress').parentNode.insertBefore(bar, $('#progress'));
-  $('#progress').hidden = true; $('#footer').hidden = true;
-  $('#main').innerHTML = '<p class="muted center pad" role="status">Checking sign-in…</p>';
-  API.getStaff().then(function (s) {
-    if (s && s.role) { start(); return; }
-    $('#main').innerHTML = '<div class="card form"><h1 class="h1">Staff sign-in needed</h1>' +
-      '<p>Booking for a client is only for staff. Sign in at the front desk first, then tap <b>+ New booking</b>.</p>' +
-      '<a class="btn-primary as-link" href="staff.html">Go to the front desk</a></div>';
-  }, function () {
-    $('#main').innerHTML = '<p class="notice" role="alert">Couldn’t check your sign-in. Check your connection and refresh.</p>';
-  });
+  start();
 });

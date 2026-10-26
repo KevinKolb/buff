@@ -20,8 +20,10 @@ Everything the live backend needs is in `supabase/migrations/`. These are the st
 Then add the manager, using the same email as the Supabase login:
 
 ```sql
-insert into public.staff (email, role) values ('<manager email, lowercase>', 'manager');
+insert into public.staff (email, roles) values ('<manager email, lowercase>', '{manager}');
 ```
+
+After that, managers add everyone else on the front desk's **Team** tab.
 
 Run the security advisor afterwards and fix anything it flags.
 
@@ -40,8 +42,8 @@ Supabase's built-in email only sends to members of the Supabase organization, an
 
 ## Adding staff later
 
-```sql
-insert into public.staff (email, role, provider_id) values ('name@example.com', 'provider', 'p2');
-```
+Use the **Staff logins** section of the front desk's **Team** tab. A login can have several roles:
 
-`role` is `manager` or `provider`. `provider_id` links a provider to their column on the schedule, so they can request time off only for themselves.
+- **Manager**: everything, including the Team and Menu tabs and approving time off.
+- **Reservationist**: book clients (`book.html`), the schedule and the waitlist.
+- **Service provider**: the schedule and their own time off requests. Linked to their column on the schedule.

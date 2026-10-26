@@ -62,10 +62,8 @@
     return unwrap(res);
   }
 
-  function availability(dateISO, mins, providerId, guests, staff) {
-    var args = { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests };
-    if (staff) { args.p_staff = true; } // front desk: no minimum notice (checked again by the database)
-    return sb.rpc('get_availability', args).then(unwrap).then(function (res) {
+  function availability(dateISO, mins, providerId, guests) {
+    return sb.rpc('get_availability', { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests }).then(unwrap).then(function (res) {
       res.slots.forEach(function (s) { s.label = mock.formatTime(toMin(s.time)); });
       return res;
     });
@@ -137,13 +135,13 @@
 
     // ======== staff sign-in ========
 
-    /** Resolves { email, role, providerId } for a signed-in user (role null if not on staff), or null. */
+    /** Resolves { email, roles: [...], providerId } for a signed-in user (roles empty if not on staff), or null. */
     getStaff: function () {
       return sb.auth.getSession().then(function (res) {
         var session = res.data && res.data.session;
         if (!session) { return null; }
-        return Promise.all([sb.rpc('staff_role').then(unwrap), sb.rpc('staff_provider_id').then(unwrap)]).then(function (r) {
-          return { email: session.user.email, role: r[0], providerId: r[1] };
+        return Promise.all([sb.rpc('staff_roles').then(unwrap), sb.rpc('staff_provider_id').then(unwrap)]).then(function (r) {
+          return { email: session.user.email, roles: r[0] || [], providerId: r[1] };
         });
       });
     },
@@ -235,6 +233,27 @@
         CFG.providers = rows.map(function (x) { return { id: x.id, name: x.name, initials: x.initials, blurb: x.blurb }; });
         return p;
       });
+    },
+
+    // ======== staff logins (managers) ========
+
+    listStaff: function () {
+      return sb.from('staff').select('*').order('email').then(unwrap).then(function (rows) {
+        return rows.map(function (r) { return { email: r.email, roles: r.roles || [], providerId: r.provider_id }; });
+      });
+    },
+
+    saveStaff: function (s, isNew) {
+      var row = { email: s.email.trim().toLowerCase(), roles: s.roles, provider_id: s.roles.indexOf('provider') >= 0 ? (s.providerId || null) : null };
+      var q = isNew ? sb.from('staff').insert(row) : sb.from('staff').update({ roles: row.roles, provider_id: row.provider_id }).eq('email', row.email);
+      return q.select().single().then(function (res) {
+        if (res.error && res.error.code === '23505') { throw Object.assign(new Error(row.email + ' is already on the staff list.'), { code: 'duplicate' }); }
+        return unwrap(res);
+      });
+    },
+
+    removeStaff: function (email) {
+      return sb.from('staff').delete().eq('email', email).then(unwrap);
     },
 
     // ======== menu (managers) ========
