@@ -72,6 +72,18 @@ What it will take:
 
 Worth deciding before more single-shop features get built, since every new table adds to the move.
 
+### Planned: booking by phone with a voice assistant
+
+One day callers will book by talking to an automated voice assistant instead of using the website: hear open times, book, cancel or join the waitlist, all against the same database.
+
+What it will take:
+
+- **Phone line and voice:** a phone number that answers with speech recognition and a voice (for example Twilio Voice with an AI voice agent). It hands off to a person when the caller asks or gets stuck.
+- **Same rules as the website:** the assistant calls the same database functions (availability, holds, booking, cancel), so qualifications, closed days, minimum notice and double-booking protection all apply. A held time works the same way: it's held while the caller decides.
+- **Who's calling:** match the caller's number to their client record; confirm identity before changing a booking.
+- **Records:** bookings made by voice are marked as such (like "booked by" for staff), with call recordings or transcripts kept per Buff's policy and Louisiana consent rules.
+- **Per business:** each business on the platform gets its own number, greeting and voice.
+
 ### Needs an account or a decision
 
 - **Email sender** (for example Resend): without it, clients and most staff can't get sign-in links.

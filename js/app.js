@@ -382,7 +382,7 @@ window.BuffAPI.ready.then(function () {
       '<p class="center muted">' + (wl ? 'We’ll contact you if a spot opens. First to claim it gets it.' : 'Save your reference below. Need to change plans? Cancel online or call us.') + '</p>' +
       summaryCard() +
       '<p class="center xs muted">Reference ' + esc(r.id) + ' · ' + esc(CFG.business.name) + ', ' + esc(CFG.business.address) + '</p>' +
-      (wl ? '' : '<button class="btn-outline" data-act="ics">Add to calendar</button>') +
+      (wl ? '' : BuffCal.menu({ id: r.id, date: state.date, start: API.toMin(state.slot.time), mins: totals().mins, services: state.selected, provider: state.provider === 'any' ? '' : providerName(state.provider), guests: state.guests })) +
       (wl ? '' : state.account
         ? '<a class="link center" href="account.html">See all your visits</a>'
         : '<a class="link center" href="manage.html?ref=' + encodeURIComponent(r.id) + '">Need to cancel? Manage this booking</a>') +
@@ -471,7 +471,6 @@ window.BuffAPI.ready.then(function () {
       restart();
       go(1);
     }
-    else if (act === 'ics') { downloadIcs(); }
     else if (act === 'change-time') { state.errors = {}; stepBack(); }
     else if (act === 'retry-slots') { loadSlots(); }
   });
@@ -551,22 +550,6 @@ window.BuffAPI.ready.then(function () {
       if (err.code === 'taken') { state.notice = 'Sorry, that time was just booked. Please pick another.'; go(3, { replace: true }); loadSlots(); return; }
       state.errors = { form: err.code === 'not_qualified' ? 'That provider doesn’t do these services. Go back and pick someone else or First available.' : 'Something went wrong. Please try again or call us.' }; render();
     });
-  }
-
-  function downloadIcs() {
-    var t = totals();
-    var d = state.date.replace(/-/g, ''), tm = state.slot.time.replace(':', '') + '00';
-    var end = new Date(fromISO(state.date).getTime());
-    var p = state.slot.time.split(':'); end.setHours(+p[0], +p[1] + t.mins);
-    var endStr = isoDate(end).replace(/-/g, '') + 'T' + ('0' + end.getHours()).slice(-2) + ('0' + end.getMinutes()).slice(-2) + '00';
-    var ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Buff Beauty Bar//Booking//EN', 'BEGIN:VEVENT',
-      'UID:' + state.result.id + '@buffbeautybar.com', 'DTSTART:' + d + 'T' + tm, 'DTEND:' + endStr,
-      'SUMMARY:' + CFG.business.name + ' — ' + state.selected.join(' + '),
-      'LOCATION:' + CFG.business.address, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
-    a.download = 'buff-appointment.ics';
-    document.body.appendChild(a); a.click(); a.remove();
   }
 
   $('#call').href = CFG.business.phoneHref;

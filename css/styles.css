@@ -205,3 +205,17 @@ a.link { display: flex; align-items: center; justify-content: center; }
 @media (max-width: 559px) {
   .hold-dialog { margin: auto 0 0; width: 100vw; max-width: 100vw; border-radius: 20px 20px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 }
+
+/* Add to calendar / directions menus */
+.cal-wrap { display: flex; flex-direction: column; gap: 10px; }
+.cal-menu > summary { list-style: none; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.cal-menu > summary::-webkit-details-marker { display: none; }
+.cal-menu > summary::after { content: "▾"; margin-left: 8px; font-size: 12px; }
+.cal-menu[open] > summary::after { content: "▴"; }
+.cal-list { display: flex; flex-direction: column; margin-top: 8px; background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.cal-opt { min-height: 52px; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 16px; border: none; background: transparent; color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; text-align: left; text-decoration: none; cursor: pointer; }
+.cal-opt + .cal-opt { border-top: 1px solid var(--line-soft); }
+.cal-opt:hover, .cal-opt:focus-visible { background: var(--blush); }
+.cal-opt .xs { font-weight: 400; }
+.cal-wrap.is-compact { margin-top: 6px; }
+.cal-wrap.is-compact .cal-btn { min-height: 44px; font-size: 14px; }

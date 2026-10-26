@@ -108,6 +108,7 @@
 
   // business details from settings (older databases don't have them: keep config.js values)
   function applyBusiness(s) {
+    if (s.timezone) { CFG.business.timezone = s.timezone; }
     if (s.address == null) { return; }
     CFG.business.name = s.business_name;
     CFG.business.phone = s.phone;
