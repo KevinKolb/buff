@@ -47,7 +47,8 @@ There's no login yet, so don't share the link widely.
 | `js/api.js` | Data layer. It is a **mock** for now (see below) |
 | `js/app.js` | The booking flow |
 | `manage.html`, `js/manage.js` | Client lookup and cancel |
-| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team (photos, Instagram) and staff logins, menu, specials, gift cards, business details, hours and booking rules |
+| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team (photos, Instagram), locations (where each provider works, days, travel time) and staff logins, menu, specials, gift cards, business details, hours and booking rules |
+| `js/places.js` | Places: where providers work, travel time between places (estimated from the map or set by hand), map lookup. The database (`_works_there`, `_travel_min`, `_free_at`) decides what can be booked |
 | `js/legal.js` | The front desk Legal tab: possible legal issues by category (edit the list here) |
 | `book.html`, `js/book.js` | Staff booking for phone and walk-in clients, with the day's schedule alongside |
 | `account.html`, `js/account.js` | Client sign-in: upcoming and past visits, cancel, update name and mobile |
@@ -103,7 +104,7 @@ Open the booking system to independent providers wherever they work: their own s
 
 What it will take:
 
-- **Where, not just when:** each provider's availability carries a place (a location on the platform, their own address, or a travel area for house calls). Clients search by neighborhood or distance as well as time, and travel time between places blocks the calendar.
+- **Where, not just when:** done for named places: providers list where they work (and which days) on the Locations tab, clients pick a place when booking, and travel time between places blocks back-to-back appointments. Still to do: house calls (a travel area instead of an address) and searching by neighborhood or distance.
 - **Provider accounts:** providers sign up, set their own services, prices, hours, photos and Instagram, and manage their own calendar. Builds on the multiple businesses and locations plan above (a solo provider is a business of one).
 - **Membership billing:** monthly or per-booking fees charged to providers (for example Stripe Billing), with listing paused when unpaid.
 - **Payouts:** client payments go to the provider who did the work (a marketplace setup such as Stripe Connect), with any platform fee taken out.

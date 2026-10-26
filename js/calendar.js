@@ -25,11 +25,13 @@
   function icsEscape(s) { return String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n'); }
 
   /**
-   * ev: { id, date: 'YYYY-MM-DD', start: minutes, mins, services: [...], provider: name, guests }
+   * ev: { id, date: 'YYYY-MM-DD', start: minutes, mins, services: [...], provider: name, guests, place?: { name, address } }
    * Returns everything the menu needs.
    */
   function event(ev) {
-    var CFG = window.BUFF_CONFIG, b = CFG.business, tz = b.timezone || 'America/Chicago';
+    var CFG = window.BUFF_CONFIG, tz = CFG.business.timezone || 'America/Chicago';
+    // the visit's place, if it isn't at the business itself
+    var b = ev.place && !ev.place.main ? Object.assign({}, CFG.business, { name: CFG.business.name + ' at ' + ev.place.name, address: ev.place.address }) : CFG.business;
     var start = zoned(ev.date, ev.start, tz), end = new Date(start.getTime() + ev.mins * 60000);
     var title = b.name + ': ' + ev.services.join(' + ');
     var manage = location.origin + location.pathname.replace(/[^/]*$/, '') + 'manage.html?ref=' + encodeURIComponent(ev.id);

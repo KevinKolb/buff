@@ -19,6 +19,7 @@ window.BuffAPI.ready.then(function () {
     selected: [],          // service names
     guests: 1,
     provider: 'any',
+    place: null,           // place id picked on step 2 (only asked when there's more than one)
     date: null,            // 'YYYY-MM-DD'
     slot: null,            // { time, label, providerIds }
     waitlist: false,
@@ -56,6 +57,24 @@ window.BuffAPI.ready.then(function () {
   function isoDate(d) { var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day; }
   function fromISO(iso) { return new Date(iso + 'T00:00:00'); }
   function longDate(iso) { return fromISO(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
+  // ----- places: where the visit is (see places.js) -----
+  var PL = window.BuffPlaces;
+  function placeChoices() { return PL && state.selected.length ? PL.forServices(state.selected, API.canDo) : []; }
+  function needsPlace() { return !isGift() && placeChoices().length > 1; }
+  function sameId(a, b) { return a != null && b != null && String(a) === String(b); }
+  /** The place for this visit: picked, or the only one that fits; null if they still need to pick. */
+  function placeId() {
+    var ch = placeChoices();
+    if (state.place != null && ch.some(function (id) { return sameId(id, state.place); })) { return state.place; }
+    if (state.provider !== 'any' && state.provider !== 'gift' && PL) {
+      var theirs = ch.filter(function (id) { return PL.worksThere(state.provider, id); });
+      if (theirs.length === 1) { return theirs[0]; }
+    }
+    return ch.length === 1 ? ch[0] : null;
+  }
+  function showPlace() { return !!(PL && PL.several()); }
+  function placeText(id) { var p = PL && PL.byId(id); return p ? p.name + ', ' + p.address : ''; }
+
   // Gift cards are worth the regular price; specials apply when the visit is booked.
   function isGift() { return state.provider === 'gift'; }
   function regularPrice() {
@@ -73,6 +92,7 @@ window.BuffAPI.ready.then(function () {
       check: '<path d="M20 6L9 17l-5-5"/>',
       plus: '<path d="M12 5v14M5 12h14"/>',
       minus: '<path d="M5 12h14"/>',
+      pin: '<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
       star: '<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>',
       card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
       gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v9H5v-9M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
@@ -126,7 +146,7 @@ window.BuffAPI.ready.then(function () {
 
   var holdTimer = null;
   function holdSlot(slot) {
-    var want = { token: holdToken, date: state.date, time: slot.time, provider: state.provider, guests: state.guests, services: state.selected.slice() };
+    var want = { token: holdToken, date: state.date, time: slot.time, provider: state.provider, guests: state.guests, services: state.selected.slice(), place: placeId() };
     API.holdSlot(want).then(function (r) {
       if (!state.slot || state.slot.time !== want.time || state.date !== want.date) { return; } // they picked something else meanwhile
       state.hold = { date: want.date, time: want.time, label: slot.label, expiresAt: r.expiresAt };
@@ -216,7 +236,7 @@ window.BuffAPI.ready.then(function () {
     render();
     var t = totals();
     var reqDate = state.date;
-    API.getAvailability(reqDate, t.mins, state.provider, state.guests, state.selected).then(function (res) {
+    API.getAvailability(reqDate, t.mins, state.provider, state.guests, state.selected, null, placeId()).then(function (res) {
       if (reqDate !== state.date) { return; } // a newer request is in flight
       state.slots = res; state.slotsLoading = false;
       render();
@@ -288,13 +308,23 @@ window.BuffAPI.ready.then(function () {
   }
 
   function viewProvider() {
-    var opts = [{ id: 'any', name: 'First available', initials: '', blurb: 'Most openings' }].concat(qualifiedPros());
+    var where = needsPlace(), here = placeId();
+    var pros = qualifiedPros().filter(function (p) { return !where || here == null || PL.worksThere(p.id, here); });
+    var opts = [{ id: 'any', name: 'First available', initials: '', blurb: 'Most openings' }].concat(pros);
+    var places = where ? '<ul class="stack">' + placeChoices().map(function (id) {
+      var pl = PL.byId(id), on = sameId(here, id);
+      return '<li><button class="pro' + (on ? ' is-on' : '') + '" data-act="place" data-v="' + esc(id) + '" aria-pressed="' + on + '">' +
+        '<span class="avatar">' + icon('pin') + '</span>' +
+        '<span class="svc-main"><span class="svc-name">' + esc(pl.name) + '</span><span class="muted sm">' + esc(pl.address) + '</span></span>' +
+        (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
+    }).join('') + '</ul>' : '';
     var rows = opts.map(function (p) {
       var on = state.provider === p.id;
+      var at = where && here == null && p.id !== 'any' ? PL.forProvider(p.id).map(function (id) { return (PL.byId(id) || {}).name; }).filter(Boolean).join(' · ') : '';
       var ig = p.instagram ? '<a class="pro-ig" href="https://www.instagram.com/' + encodeURIComponent(p.instagram) + '/" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on Instagram (@' + esc(p.instagram) + ')">' + IG_ICON + '</a>' : '';
       return '<li class="pro-li"><button class="pro' + (on ? ' is-on' : '') + (ig ? ' has-ig' : '') + '" data-act="pro" data-v="' + p.id + '" aria-pressed="' + on + '">' +
         (p.id === 'any' ? '<span class="avatar">' + icon('star') + '</span>' : avatar(p)) +
-        '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + '</span></span>' +
+        '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + '</span>' + (at ? '<span class="muted xs">At ' + esc(at) + '</span>' : '') + '</span>' +
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button>' + ig + '</li>';
     }).join('');
     var hidden = CFG.providers.length - qualifiedPros().length;
@@ -303,6 +333,13 @@ window.BuffAPI.ready.then(function () {
       '<span class="avatar">' + icon('gift') + '</span>' +
       '<span class="svc-main"><span class="svc-name">Gift card</span><span class="muted sm">' + (state.selected.length > 1 ? 'These services' : esc(state.selected[0] || 'This service')) + (state.guests > 1 ? ' for ' + state.guests : '') + ', emailed or printed · ' + money(regularPrice().total * state.guests) + '</span></span>' +
       (gOn ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li></ul>';
+    if (where) {
+      return '<h1 class="h1">Where would you like to go?</h1>' + places +
+        (here == null && !state.place ? '<p class="muted sm">Pick a place, or a provider below.</p>' : '') +
+        '<h2 class="label">Who would you like?</h2>' +
+        (state.guests > 1 ? '<p class="muted sm">With ' + state.guests + ' guests, your pick is for you — we’ll pair your guests with other pros working at the same time.</p>' : '') +
+        '<ul class="stack">' + rows + '</ul>' + gift;
+    }
     return '<h1 class="h1">Who would you like?</h1>' +
       (hidden ? '<p class="muted sm">Showing the providers who do ' + (state.selected.length > 1 ? 'all of ' : '') + esc(state.selected.join(' + ')) + '.</p>' : '') +
       (state.guests > 1 ? '<p class="muted sm">With ' + state.guests + ' guests, your pick is for you — we’ll pair your guests with other pros working at the same time.</p>' : '') +
@@ -381,6 +418,7 @@ window.BuffAPI.ready.then(function () {
       '<div class="b lg">' + esc(when) + '</div>' +
       '<div>' + esc(state.selected.join(' + ')) + '</div>' +
       '<div class="muted sm">' + esc(providerName(state.provider)) + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + ' · ' + priceText(t) + '</div>' +
+      (showPlace() && placeId() != null ? '<div class="sm">At ' + esc(placeText(placeId())) + '</div>' : '') +
       (t.pricing.note ? '<div class="sp-applied">Special: ' + esc(t.pricing.note) + '</div>' : '') + '</div>';
   }
 
@@ -490,7 +528,7 @@ window.BuffAPI.ready.then(function () {
       '<p class="center muted">' + (wl ? 'We’ll contact you if a spot opens. First to claim it gets it.' : 'Save your reference below. Need to change plans? Cancel online or call us.') + '</p>' +
       summaryCard() +
       '<p class="center xs muted">Reference ' + esc(r.id) + ' · ' + esc(CFG.business.name) + ', ' + esc(CFG.business.address) + '</p>' +
-      (wl ? '' : BuffCal.menu({ id: r.id, date: state.date, start: API.toMin(state.slot.time), mins: totals().mins, services: state.selected, provider: state.provider === 'any' ? '' : providerName(state.provider), guests: state.guests })) +
+      (wl ? '' : BuffCal.menu({ id: r.id, date: state.date, start: API.toMin(state.slot.time), mins: totals().mins, services: state.selected, provider: state.provider === 'any' ? '' : providerName(state.provider), guests: state.guests, place: PL && PL.byId(placeId()) })) +
       (wl ? '' : state.account
         ? '<a class="link center" href="account.html">See all your visits</a>'
         : '<a class="link center" href="manage.html?ref=' + encodeURIComponent(r.id) + '">Need to cancel? Manage this booking</a>') +
@@ -500,7 +538,7 @@ window.BuffAPI.ready.then(function () {
   // ---------- render ----------
   function canContinue() {
     if (state.step === 1) { return state.selected.length > 0 && !comboProblem(); }
-    if (state.step === 2) { return true; }
+    if (state.step === 2) { return isGift() || !needsPlace() || placeId() != null; }
     if (state.step === 3) { return !!state.slot || state.waitlist || isGift(); }
     if (state.step === 4) { return !state.submitting; }
     return false;
@@ -517,6 +555,7 @@ window.BuffAPI.ready.then(function () {
     var when = isGift() ? 'Gift card' : state.waitlist ? longDate(state.date) + ' · waitlist' : state.slot ? longDate(state.date) + ' at ' + state.slot.label : '';
     return '<div class="label">Your visit</div><ul class="foot-list">' + rows + '</ul>' +
       '<p class="sm">' + esc(providerName(state.provider)) + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + '</p>' +
+      (showPlace() && placeId() != null && !isGift() ? '<p class="sm">At ' + esc(placeText(placeId())) + '</p>' : '') +
       (when ? '<p class="b sm">' + esc(when) + '</p>' : '');
   }
 
@@ -567,7 +606,19 @@ window.BuffAPI.ready.then(function () {
       dropHold(); state.slots = null; state.slot = null; render();
     }
     else if (act === 'guests') { state.guests = Math.max(1, Math.min(CFG.booking.maxGuests, state.guests + +v)); dropHold(); state.slots = null; state.slot = null; render(); }
-    else if (act === 'pro') { if (v !== state.provider) { dropHold(); state.slots = null; state.slot = null; state.waitlist = false; state.errors = {}; } state.provider = v; render(); }
+    else if (act === 'pro') {
+      if (v !== state.provider) { dropHold(); state.slots = null; state.slot = null; state.waitlist = false; state.errors = {}; }
+      state.provider = v;
+      if (PL && v !== 'any' && v !== 'gift' && state.place != null && !PL.worksThere(v, state.place)) { state.place = null; } // they don't work there
+      render();
+    }
+    else if (act === 'place') {
+      var np = placeChoices().filter(function (id) { return String(id) === v; })[0];
+      if (!sameId(np, state.place)) { dropHold(); state.slots = null; state.slot = null; state.waitlist = false; }
+      state.place = np;
+      if (state.provider !== 'any' && state.provider !== 'gift' && !PL.worksThere(state.provider, np)) { state.provider = 'any'; }
+      render();
+    }
     else if (act === 'date') { state.date = v; state.notice = null; loadSlots(); }
     else if (act === 'slot') {
       state.slot = state.slots.slots.filter(function (x) { return x.time === v; })[0];
@@ -606,7 +657,7 @@ window.BuffAPI.ready.then(function () {
 
   function restart() {
     dropHold();
-    state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {}; state.notice = null;
+    state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.place = null; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {}; state.notice = null;
     state.client = { name: '', phone: '', email: '', note: '', agree: false, occasion: '' };
     state.gift = { recipientName: '', recipientEmail: '', from: '', message: '', delivery: 'recipient' };
     if (state.account) { state.client.name = state.account.client.name || ''; state.client.phone = state.account.client.phone || ''; state.client.email = state.account.email; }
@@ -698,7 +749,7 @@ window.BuffAPI.ready.then(function () {
     var t = totals();
     var payload = {
       services: state.selected.slice(), guests: state.guests, mins: t.mins, total: t.price,
-      provider: state.provider, date: state.date, policyAgreed: !!state.client.agree, holdToken: holdToken, // always: the hold may still be on its way when they tap Book (slow signal)
+      provider: state.provider, date: state.date, policyAgreed: !!state.client.agree, holdToken: holdToken, place: placeId(), // always: the hold may still be on its way when they tap Book (slow signal)
       occasion: state.client.occasion.trim(),
       client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim() },
     };

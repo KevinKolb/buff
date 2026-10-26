@@ -35,6 +35,9 @@ window.BuffAPI.ready.then(function () {
     specials: null,    // managers' Specials tab
     gifts: null,       // Gift cards tab
     legalOpen: {},     // Legal tab: which categories are open
+    locDraft: {},      // Locations tab: place being added, by provider id
+    placeEdit: {},     // Locations tab: place being edited, by place id
+    travelDraft: {},   // Locations tab: travel minutes being typed, by 'a-b'
     giftQ: '',         // gift card search
     giftUse: {},       // amount being used, by gift card id
     spEdit: null,      // special being added or edited
@@ -121,7 +124,7 @@ window.BuffAPI.ready.then(function () {
         blocks += '<button class="s-appt is-' + b.status + (b.sample ? ' is-sample' : '') + (h < 60 ? ' is-short' : '') + '" data-act="appt" data-v="' + esc(b.id) + '" style="top:' + ((b.start - hrs.open) * PX) + 'px;height:' + h + 'px">' +
           '<span class="s-appt-time">' + fmt(b.start) + (b.status === 'arrived' ? ' · In' : b.status === 'no-show' ? ' · No-show' : '') +
             (b.occasion && b.occasion.trim() ? ' <span class="s-occ">' + esc(b.occasion.trim()) + '</span>' : '') + '</span>' +
-          '<span class="s-appt-name">' + esc(b.client.name) + (b.guests > 1 ? ' +' + (b.guests - 1) : '') + '</span>' +
+          '<span class="s-appt-name">' + esc(b.client.name) + (b.guests > 1 ? ' +' + (b.guests - 1) : '') + (placeShort(b.placeId) ? ' · ' + esc(placeShort(b.placeId)) : '') + '</span>' +
           '<span class="s-appt-svc">' + esc(b.services.join(', ')) + '</span></button>';
       });
       return '<div class="s-col"><div class="s-colhead">' + avatar(p, 'sm') + '<span>' + esc(p.name) + '</span></div>' +
@@ -174,6 +177,7 @@ window.BuffAPI.ready.then(function () {
         '<div>' + esc(b.services.join(' + ')) + '</div>' +
         '<div class="muted sm">' + esc(who) + (b.guests > 1 ? ' · ' + b.guests + ' guests' : '') + ' · ' + money(b.total || 0) + '</div>' +
         (contact ? '<div class="sm">' + contact + '</div>' : '') +
+        (PL && PL.several() ? '<div class="sm">At <b>' + esc((PL.byId(b.placeId == null ? PL.mainId() : b.placeId) || {}).name || '') + '</b>, ' + esc((PL.byId(b.placeId == null ? PL.mainId() : b.placeId) || {}).address || '') + '</div>' : '') +
         (c.note ? '<div class="card pad-sm sm"><span class="b">Note:</span> ' + esc(c.note) + '</div>' : '') +
         (b.occasion && b.occasion.trim() ? '<div class="s-occ-line">Celebrating: <b>' + esc(b.occasion.trim()) + '</b></div>' : '') +
         (b.discountNote ? '<div class="sm s-sp-note">Special' + (b.discountNote.indexOf(',') >= 0 ? 's' : '') + ': ' + esc(b.discountNote) + '</div>' : '') +
@@ -974,6 +978,120 @@ window.BuffAPI.ready.then(function () {
     }, function () { state.teamMsg[key] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
   }
 
+  // ---------- locations (managers: everyone; providers: their own) ----------
+  // Where each provider works, which days, and travel time between places.
+  var PL = window.BuffPlaces;
+  var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function placeShort(id) { var p = PL && PL.several() && PL.byId(id == null ? PL.mainId() : id); return p && !p.main ? p.name : ''; }
+  function placeRows(pid) {
+    var rows = (CFG.providerPlaces || {})[pid];
+    return rows && rows.length ? JSON.parse(JSON.stringify(rows)) : (PL.mainId() != null ? [{ placeId: PL.mainId(), days: [] }] : []);
+  }
+  function locMsg(key, text, err) { state.teamMsg['loc:' + key] = text ? { text: text, err: !!err } : null; render(); }
+  function travelHow(t) {
+    return t.how === 'set' ? 'set by hand' : t.how === 'map' ? 'estimated from the map' : t.how === 'same' ? 'same address' : 'address not found on the map, so the default';
+  }
+  function canEditPlace(pl) {
+    if (pl.main) { return false; }
+    if (isManager()) { return true; }
+    var me = state.staff && state.staff.providerId;
+    var users = CFG.providers.filter(function (p) { return PL.forProvider(p.id).some(function (id) { return String(id) === String(pl.id); }); });
+    return !!me && users.length === 1 && users[0].id === me;
+  }
+
+  function viewLocProvider(p) {
+    var rows = placeRows(p.id), d = state.locDraft[p.id] || { pick: '', name: '', address: '' };
+    var linked = rows.map(function (r) { return String(r.placeId); });
+    var list = rows.map(function (r) {
+      var pl = PL.byId(r.placeId) || { name: '?', address: '' };
+      return '<li class="s-loc-row"><div class="row-between"><div><div class="b sm">' + esc(pl.name) + (pl.main ? ' <span class="muted xs">(main)</span>' : '') + '</div>' +
+          '<div class="muted xs">' + esc(pl.address) + (pl.lat == null && !pl.main ? ' · <span class="s-warn">not found on the map</span>' : '') + '</div></div>' +
+          (rows.length > 1 ? '<button class="btn-text-danger sm" data-act="loc-unlink" data-id="' + esc(p.id) + '" data-v="' + esc(r.placeId) + '">Remove</button>' : '') + '</div>' +
+        '<div class="s-loc-days" role="group" aria-label="Days at ' + esc(pl.name) + '">' + DOW.map(function (n, i) {
+          var on = r.days && r.days.indexOf(i) >= 0;
+          return '<button class="chip sm' + (on ? ' is-on' : '') + '" data-act="loc-day" data-id="' + esc(p.id) + '" data-k="' + esc(r.placeId) + '" data-v="' + i + '" aria-pressed="' + !!on + '">' + n + '</button>';
+        }).join('') + '<span class="muted xs">' + (r.days && r.days.length ? '' : 'Every day') + '</span></div></li>';
+    }).join('');
+    var others = (CFG.places || []).filter(function (pl) { return linked.indexOf(String(pl.id)) < 0; });
+    var add = '<div class="s-loc-add"><div class="field"><label for="loc-pick-' + esc(p.id) + '">Add a place</label>' +
+      '<select id="loc-pick-' + esc(p.id) + '" data-loc="' + esc(p.id) + '" name="pick"><option value="">Choose…</option>' +
+        others.map(function (pl) { return '<option value="' + esc(pl.id) + '"' + (String(d.pick) === String(pl.id) ? ' selected' : '') + '>' + esc(pl.name + ' · ' + pl.address) + '</option>'; }).join('') +
+        '<option value="new"' + (d.pick === 'new' ? ' selected' : '') + '>A new place…</option></select></div>' +
+      (d.pick === 'new'
+        ? '<div class="field"><label for="loc-name-' + esc(p.id) + '">Business name</label><input id="loc-name-' + esc(p.id) + '" data-loc="' + esc(p.id) + '" name="name" type="text" maxlength="80" autocomplete="off" placeholder="Studio, salon or venue" value="' + esc(d.name) + '"></div>' +
+          '<div class="field"><label for="loc-addr-' + esc(p.id) + '">Address</label><input id="loc-addr-' + esc(p.id) + '" data-loc="' + esc(p.id) + '" name="address" type="text" maxlength="160" autocomplete="off" placeholder="Street, city, state" value="' + esc(d.address) + '"></div>'
+        : '') +
+      (d.pick ? '<button class="btn-primary sm" data-act="loc-add" data-id="' + esc(p.id) + '">Add place</button>' : '') + '</div>';
+    // travel between this provider's places
+    var pairs = [];
+    for (var i = 0; i < rows.length; i++) { for (var j = i + 1; j < rows.length; j++) { pairs.push([rows[i].placeId, rows[j].placeId]); } }
+    var travel = pairs.length ? '<div class="s-loc-travel"><div class="b sm">Travel time</div>' + pairs.map(function (pr) {
+      var k = PL.key(+pr[0], +pr[1]), t = PL.travelInfo(pr[0], pr[1]), a = PL.byId(pr[0]), b = PL.byId(pr[1]);
+      var v = state.travelDraft[k] != null ? state.travelDraft[k] : t.minutes;
+      return '<div class="s-loc-pair"><div class="sm">' + esc(a.name) + ' ↔ ' + esc(b.name) + '</div>' +
+        '<div class="row-wrap"><label class="sr-only" for="tr-' + k + '">Minutes between ' + esc(a.name) + ' and ' + esc(b.name) + '</label>' +
+          '<input id="tr-' + k + '" data-travel="' + k + '" type="number" inputmode="numeric" min="0" max="240" step="5" value="' + esc(v) + '"><span class="sm">min</span>' +
+          '<button class="btn-outline sm" data-act="tr-save" data-v="' + k + '">Save</button>' +
+          (t.how === 'set' ? '<button class="link sm" data-act="tr-reset" data-v="' + k + '">Use the estimate</button>' : '') + '</div>' +
+        '<div class="muted xs">' + esc(travelHow(t)) + '</div></div>';
+    }).join('') + '</div>' : '';
+    return '<li class="card form s-loc"><div class="row-wrap">' + avatar(p) + '<div class="b">' + esc(p.name) + '</div></div>' +
+      '<ul class="stack s-loc-list">' + list + '</ul>' + add + travel + msgLine('loc:' + p.id) + '</li>';
+  }
+
+  function viewLocations() {
+    if (!PL || !CFG.places) { return '<h1 class="h1">Locations</h1><div class="card pad"><p class="center muted">Loading…</p></div>'; }
+    if (!CFG.places.length) { return '<h1 class="h1">Locations</h1><p class="notice">Locations need a database update (20261026001900_places.sql).</p>'; }
+    var mine = state.staff && state.staff.providerId;
+    var who = isManager() ? CFG.providers : CFG.providers.filter(function (p) { return p.id === mine; });
+    var places = isManager() ? '<div class="card form"><div class="b">All places</div><ul class="stack s-loc-list">' + CFG.places.map(function (pl) {
+      var users = CFG.providers.filter(function (p) { return PL.forProvider(p.id).some(function (id) { return String(id) === String(pl.id); }); });
+      var ed = state.placeEdit[pl.id];
+      if (ed) {
+        return '<li class="s-loc-row"><div class="field"><label for="pe-name-' + pl.id + '">Business name</label><input id="pe-name-' + pl.id + '" data-pe="' + pl.id + '" name="name" type="text" maxlength="80" value="' + esc(ed.name) + '"></div>' +
+          '<div class="field"><label for="pe-addr-' + pl.id + '">Address</label><input id="pe-addr-' + pl.id + '" data-pe="' + pl.id + '" name="address" type="text" maxlength="160" value="' + esc(ed.address) + '"></div>' +
+          '<div class="row-wrap"><button class="btn-primary sm" data-act="pe-save" data-v="' + pl.id + '">Save</button><button class="link sm" data-act="pe-cancel" data-v="' + pl.id + '">Cancel</button></div>' + msgLine('loc:pl' + pl.id) + '</li>';
+      }
+      return '<li class="s-loc-row"><div class="row-between"><div><div class="b sm">' + esc(pl.name) + (pl.main ? ' <span class="muted xs">(main: change it on the Business tab)</span>' : '') + '</div>' +
+          '<div class="muted xs">' + esc(pl.address) + '</div>' +
+          '<div class="muted xs">' + (users.length ? esc(users.map(function (p) { return p.name; }).join(', ')) : 'No one works here') +
+            (pl.lat == null ? ' · <span class="s-warn">not found on the map</span> <button class="link-inline" data-act="pe-find" data-v="' + pl.id + '">Try again</button>' : '') + '</div></div>' +
+        (pl.main ? '' : '<div class="row-wrap"><button class="btn-outline sm" data-act="pe-edit" data-v="' + pl.id + '">Edit</button>' +
+          '<button class="btn-text-danger sm" data-act="pe-del" data-v="' + pl.id + '">Delete</button></div>') + '</div>' + msgLine('loc:pl' + pl.id) + '</li>';
+    }).join('') + '</ul></div>' : '';
+    return '<h1 class="h1">Locations</h1>' +
+      '<p class="muted sm">Where each provider works and on which days (no days ticked = every day). Clients pick a place when booking once more than one is in use. ' +
+        'Back-to-back appointments at different places leave room for the travel time between them: estimated from the map (about 18 mph in town, plus 10 minutes to park and set up), or set it by hand.</p>' +
+      (who.length ? '<ul class="stack">' + who.map(viewLocProvider).join('') + '</ul>' : '<div class="card pad"><p class="center muted">Your login isn’t linked to a provider. Ask a manager.</p></div>') +
+      places;
+  }
+
+  function saveRows(pid, rows, done) {
+    locMsg(pid, 'Saving…');
+    return API.setProviderPlaces(pid, rows).then(function () { locMsg(pid, done || 'Saved.'); load(); },
+      function () { locMsg(pid, 'Couldn’t save. Check your connection and try again.', true); });
+  }
+
+  function addPlace(pid) {
+    var d = state.locDraft[pid] || {}, rows = placeRows(pid);
+    if (d.pick && d.pick !== 'new') {
+      rows.push({ placeId: +d.pick, days: [] });
+      delete state.locDraft[pid];
+      return saveRows(pid, rows, 'Added.');
+    }
+    var name = String(d.name || '').trim(), address = String(d.address || '').trim();
+    if (!name) { return locMsg(pid, 'Enter the business name.', true); }
+    if (address.length < 5) { return locMsg(pid, 'Enter the address.', true); }
+    locMsg(pid, 'Finding it on the map…');
+    PL.geocode(address).then(function (g) {
+      return API.savePlace({ name: name, address: address, lat: g ? g.lat : null, lng: g ? g.lng : null }).then(function (pl) {
+        rows.push({ placeId: pl.id, days: [] });
+        delete state.locDraft[pid];
+        return saveRows(pid, rows, g ? 'Added.' : 'Added, but the address wasn’t found on the map, so travel uses the default time. Check the address or set travel times by hand.');
+      });
+    }).catch(function () { locMsg(pid, 'Couldn’t add the place. Check your connection and try again.', true); });
+  }
+
   // ---------- experiment: services with who does them ----------
   // A copy of the client Services page. Each provider who does a service gets a
   // small circle; tapping it opens online booking with the service and that
@@ -1201,7 +1319,7 @@ window.BuffAPI.ready.then(function () {
     var main = $('#s-main');
     var sched = $('.s-sched');
     var keep = { top: sched ? sched.scrollTop : null, left: sched ? sched.scrollLeft : 0 };
-    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, specials: viewSpecials, gifts: viewGifts, business: viewBusiness, legal: viewLegal, experiment: viewExperiment }[state.tab]();
+    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, specials: viewSpecials, gifts: viewGifts, business: viewBusiness, legal: viewLegal, experiment: viewExperiment, locations: viewLocations }[state.tab]();
     sched = $('.s-sched');
     if (sched) {
       if (keep.top !== null) { sched.scrollTop = keep.top; sched.scrollLeft = keep.left; }
@@ -1219,6 +1337,7 @@ window.BuffAPI.ready.then(function () {
   function tabAllowed(tab) {
     if (tab === 'team' || tab === 'menu' || tab === 'specials' || tab === 'business' || tab === 'legal') { return isManager(); }
     if (tab === 'waitlist' || tab === 'gifts') { return canBook(); }
+    if (tab === 'locations') { return isManager() || hasRole('provider'); }
     return true; // schedule, time off
   }
 
@@ -1277,6 +1396,46 @@ window.BuffAPI.ready.then(function () {
     else if (act === 'legal-all') {
       var allOpen = (window.BuffLegal || []).every(function (c, i) { return state.legalOpen[i]; });
       (window.BuffLegal || []).forEach(function (c, i) { state.legalOpen[i] = !allOpen; }); render();
+    }
+    else if (act === 'loc-add') { addPlace(el.getAttribute('data-id')); }
+    else if (act === 'loc-unlink') {
+      var upid = el.getAttribute('data-id'), pl0 = PL.byId(v);
+      if (!confirm('Remove ' + (pl0 ? pl0.name : 'this place') + ' for ' + providerName(upid) + '? Booked appointments there stay booked.')) { return; }
+      saveRows(upid, placeRows(upid).filter(function (r) { return String(r.placeId) !== v; }), 'Removed.');
+    }
+    else if (act === 'loc-day') {
+      var dpid = el.getAttribute('data-id'), rows = placeRows(dpid), dk = el.getAttribute('data-k'), dow = +v;
+      rows.forEach(function (r) {
+        if (String(r.placeId) !== dk) { return; }
+        r.days = r.days || [];
+        r.days = r.days.indexOf(dow) >= 0 ? r.days.filter(function (x) { return x !== dow; }) : r.days.concat([dow]).sort();
+      });
+      saveRows(dpid, rows);
+    }
+    else if (act === 'tr-save' || act === 'tr-reset') {
+      var ab = v.split('-'), mins = act === 'tr-reset' ? null : Math.round(+state.travelDraft[v]);
+      if (act === 'tr-save' && state.travelDraft[v] == null) { mins = PL.travel(+ab[0], +ab[1]); }
+      if (mins != null && !(mins >= 0 && mins <= 240)) { alert('Travel time should be 0 to 240 minutes.'); return; }
+      API.setTravel(+ab[0], +ab[1], mins).then(function () { delete state.travelDraft[v]; render(); load(); },
+        function () { alert('Couldn’t save the travel time. Check your connection and try again.'); });
+    }
+    else if (act === 'pe-edit') { var pe = PL.byId(v); state.placeEdit[v] = { name: pe.name, address: pe.address }; render(); }
+    else if (act === 'pe-cancel') { delete state.placeEdit[v]; render(); }
+    else if (act === 'pe-save' || act === 'pe-find') {
+      var cur = PL.byId(v), ed = act === 'pe-save' ? state.placeEdit[v] : { name: cur.name, address: cur.address };
+      if (!String(ed.name || '').trim() || String(ed.address || '').trim().length < 5) { state.teamMsg['loc:pl' + v] = { err: true, text: 'Enter the name and address.' }; render(); return; }
+      state.teamMsg['loc:pl' + v] = { text: 'Finding it on the map…' }; render();
+      PL.geocode(ed.address.trim()).then(function (g) {
+        return API.savePlace({ id: cur.id, name: ed.name.trim(), address: ed.address.trim(), lat: g ? g.lat : null, lng: g ? g.lng : null }).then(function () {
+          delete state.placeEdit[v];
+          state.teamMsg['loc:pl' + v] = { err: !g, text: g ? 'Saved.' : 'Saved, but the address wasn’t found on the map. Check it, or set travel times by hand.' };
+          render(); load();
+        });
+      }).catch(function () { state.teamMsg['loc:pl' + v] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
+    }
+    else if (act === 'pe-del') {
+      if (!confirm('Delete ' + PL.byId(v).name + '? Providers stop working there; booked appointments stay booked.')) { return; }
+      API.deletePlace(+v).then(function () { render(); load(); }, function () { alert('Couldn’t delete. Only managers can delete a place someone else uses.'); });
     }
     else if (act === 'gc-paid') { giftUpdate(v, { status: 'paid' }, 'Marked paid.'); }
     else if (act === 'gc-void') { if (confirm('Void gift card ' + giftById(v).code + '? It can’t be used after this.')) { giftUpdate(v, { status: 'void' }, 'Voided.'); } }
@@ -1353,6 +1512,17 @@ window.BuffAPI.ready.then(function () {
     }
     if (t.id === 'cl-date') { state.closedDraft.date = t.value; delete state.teamMsg.closed; return; }
     if (t.id === 'cl-label') { state.closedDraft.label = t.value; return; }
+    var lk = t.getAttribute && t.getAttribute('data-loc');
+    if (lk) {
+      var ld = state.locDraft[lk] = state.locDraft[lk] || { pick: '', name: '', address: '' };
+      ld[t.name] = t.value;
+      if (t.name === 'pick' && e.type === 'change') { render(); var nx = document.getElementById(t.value === 'new' ? 'loc-name-' + lk : 'loc-pick-' + lk); if (nx) { nx.focus(); } }
+      return;
+    }
+    var tk = t.getAttribute && t.getAttribute('data-travel');
+    if (tk) { state.travelDraft[tk] = t.value; return; }
+    var pk = t.getAttribute && t.getAttribute('data-pe');
+    if (pk) { state.placeEdit[pk][t.name] = t.value; return; }
     if (t.id === 'gc-q') {
       state.giftQ = t.value; render();
       var q = $('#gc-q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
@@ -1479,7 +1649,7 @@ window.BuffAPI.ready.then(function () {
 
   function tabFromHash() {
     var t = (location.hash || '').slice(1);
-    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'specials', 'gifts', 'business', 'legal', 'experiment'].indexOf(t) >= 0 ? t : null;
+    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'specials', 'gifts', 'business', 'legal', 'experiment', 'locations'].indexOf(t) >= 0 ? t : null;
   }
   window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab && state.auth === 'ok') { setTab(t); load(); } });
 

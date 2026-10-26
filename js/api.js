@@ -49,7 +49,16 @@
     if (db.rules) { Object.assign(CFG.booking, db.rules); }
     CFG.closedDates = db.closed || {};                                       // holidays: { 'YYYY-MM-DD': label }
     CFG.specials = db.specials || [];                                        // Specials tab (see pricing.js)
+    // places (Locations tab, see places.js); the main place follows the business details
+    db.places = db.places || [{ id: 1, name: CFG.business.name, address: CFG.business.address, lat: 29.9465, lng: -90.0726, main: true }];
+    db.places.forEach(function (p) { if (p.main) { p.name = CFG.business.name; if (p.address !== CFG.business.address) { p.address = CFG.business.address; p.lat = null; p.lng = null; } } });
+    CFG.places = db.places;
+    CFG.providerPlaces = db.providerPlaces || {};
+    CFG.placeTravel = db.placeTravel || {};
+    CFG.travelDefaultMin = db.travelDefaultMin || 30;
   }
+  function travel(a, b) { return window.BuffPlaces ? window.BuffPlaces.travel(a, b) : 0; }
+  function worksThere(pid, place, dateISO) { return window.BuffPlaces ? window.BuffPlaces.worksThere(pid, place, dateISO) : true; }
   sync();
   function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* keep working in memory */ } }
 
@@ -98,28 +107,34 @@
     return samplesFor(m[1], m[2] + '-' + m[3] + '-' + m[4]).filter(function (b) { return b.id === id; })[0] || null;
   }
 
-  // Busy intervals [start, end) in minutes for one provider on one date.
+  // Busy intervals [start, end, place] in minutes for one provider on one date
+  // (place: where it is, for travel time; 'here' = no travel, e.g. time off).
   // holdToken: the caller's own hold doesn't count as busy for them.
   function busyFor(providerId, dateISO, holdToken) {
     var busy = [], now = Date.now();
     bookingsOn(dateISO).forEach(function (b) {
-      if (b.status !== 'cancelled' && b.providerIds.indexOf(providerId) >= 0) { busy.push([b.start, b.start + b.mins]); }
+      if (b.status !== 'cancelled' && b.providerIds.indexOf(providerId) >= 0) { busy.push([b.start, b.start + b.mins, b.placeId == null ? null : b.placeId]); }
     });
     db.timeOff.forEach(function (t) {
-      if (t.status === 'approved' && t.providerId === providerId && t.date === dateISO) { busy.push([t.start, t.end]); }
+      if (t.status === 'approved' && t.providerId === providerId && t.date === dateISO) { busy.push([t.start, t.end, 'here']); }
     });
     (db.holds || []).forEach(function (h) { // someone part-way through booking online
-      if (h.date === dateISO && h.expiresAt > now && h.token !== holdToken && h.providerIds.indexOf(providerId) >= 0) { busy.push([h.start, h.start + h.mins]); }
+      if (h.date === dateISO && h.expiresAt > now && h.token !== holdToken && h.providerIds.indexOf(providerId) >= 0) { busy.push([h.start, h.start + h.mins, h.placeId == null ? null : h.placeId]); }
     });
     return busy;
   }
 
-  function isFree(busy, start, end) {
-    for (var i = 0; i < busy.length; i++) { if (start < busy[i][1] && end > busy[i][0]) { return false; } }
+  // Free from start to end at place, leaving travel time to and from everything else that day?
+  function isFree(busy, start, end, place) {
+    for (var i = 0; i < busy.length; i++) {
+      var b = busy[i], there = b[2] === 'here' ? 0 : travel(place, b[2]), back = b[2] === 'here' ? 0 : travel(b[2], place);
+      if (start < b[1] + back && end + there > b[0]) { return false; }
+    }
     return true;
   }
 
-  function slotsFor(dateISO, mins, providerId, guests, services, holdToken) {
+  function slotsFor(dateISO, mins, providerId, guests, services, holdToken, place) {
+    place = place == null && window.BuffPlaces ? window.BuffPlaces.mainId() : place;
     var hrs = hoursOn(dateISO);
     if (!hrs) { return { closed: true, slots: [] }; }
     if ((CFG.closedDates || {})[dateISO] != null) { return { closed: true, slots: [], reason: CFG.closedDates[dateISO] }; }
@@ -133,7 +148,7 @@
 
     var slots = [];
     for (var t = hrs.open; t + mins <= hrs.close; t += CFG.booking.slotStepMinutes) {
-      var free = CFG.providers.filter(function (p) { return isFree(busyMap[p.id], t, t + mins) && canDo(p.id, services); }).map(function (p) { return p.id; });
+      var free = CFG.providers.filter(function (p) { return worksThere(p.id, place, dateISO) && canDo(p.id, services) && isFree(busyMap[p.id], t, t + mins, place); }).map(function (p) { return p.id; });
       var ok = t >= earliest && free.length >= guests && (providerId === 'any' || free.indexOf(providerId) >= 0);
       var chosen = [];
       if (ok) {
@@ -142,7 +157,7 @@
       }
       slots.push({ time: toHHMM(t), label: formatTime(t), available: ok, providerIds: chosen });
     }
-    return { closed: false, slots: slots };
+    return { closed: false, slots: slots, placeId: place };
   }
 
   function giftPublic(g) {
@@ -168,9 +183,9 @@
      * @param {string[]} [services] service names: only providers set up for all of them
      * @returns {Promise<{closed:boolean, slots:Array<{time:string,label:string,available:boolean,providerIds:string[]}>}>}
      */
-    getAvailability: function (dateISO, mins, providerId, guests, services, holdToken) {
+    getAvailability: function (dateISO, mins, providerId, guests, services, holdToken, place) {
       sync();
-      return delay(slotsFor(dateISO, mins, providerId, guests, services, holdToken));
+      return delay(slotsFor(dateISO, mins, providerId, guests, services, holdToken, place));
     },
 
     // ======== holding a time while a client finishes booking ========
@@ -180,9 +195,10 @@
       sync();
       var mins = h.services.reduce(function (m, n) { var v = CFG.services.filter(function (x) { return x.name === n; })[0]; return m + (v ? v.mins : 0); }, 0);
       db.holds = (db.holds || []).filter(function (x) { return x.token !== h.token && x.expiresAt > Date.now() - 864e5; });
-      var slot = slotsFor(h.date, mins, h.provider, h.guests, h.services, h.token).slots.filter(function (s) { return s.time === h.time; })[0];
+      var place = h.place == null && window.BuffPlaces ? window.BuffPlaces.mainId() : h.place;
+      var slot = slotsFor(h.date, mins, h.provider, h.guests, h.services, h.token, place).slots.filter(function (s) { return s.time === h.time; })[0];
       if (!slot || !slot.available) { save(); return fail('taken', 'That time was just taken.'); }
-      var rec = { id: newId('H'), token: h.token, date: h.date, start: toMin(h.time), mins: mins, providerIds: slot.providerIds, expiresAt: Date.now() + HOLD_MS };
+      var rec = { id: newId('H'), token: h.token, date: h.date, start: toMin(h.time), mins: mins, providerIds: slot.providerIds, expiresAt: Date.now() + HOLD_MS, placeId: place };
       db.holds.push(rec); save();
       return delay({ expiresAt: rec.expiresAt, providerIds: rec.providerIds });
     },
@@ -217,10 +233,11 @@
       sync();
       if (payload.provider && payload.provider !== 'any' && !canDo(payload.provider, payload.services)) { return fail('not_qualified', 'That provider doesn’t do these services.'); }
       var start = toMin(payload.time);
-      var clash = payload.providerIds.some(function (id) { return !isFree(busyFor(id, payload.date, payload.holdToken), start, start + payload.mins); });
+      var place = payload.place == null && window.BuffPlaces ? window.BuffPlaces.mainId() : payload.place;
+      var clash = payload.providerIds.some(function (id) { return !worksThere(id, place, payload.date) || !isFree(busyFor(id, payload.date, payload.holdToken), start, start + payload.mins, place); });
       if (clash) { return fail('taken', 'That time was just taken.'); }
       var rec = Object.assign({ id: newId('BB'), createdAt: new Date().toISOString(), status: 'booked' }, clone(payload));
-      rec.start = start;
+      rec.start = start; rec.placeId = place; delete rec.place;
       rec.client.email = String(rec.client.email || '').trim().toLowerCase();
       rec.clientId = clientFor(payload, payload._staff);
       delete rec._staff; delete rec.client.staffNote;
@@ -402,6 +419,35 @@
     },
     saveHours: function (hours) { sync(); db.hours = clone(hours); CFG.hours = db.hours; save(); return delay(true); },
     saveRules: function (r) { sync(); db.rules = clone(r); Object.assign(CFG.booking, db.rules); save(); return delay(true); },
+
+    // ======== places (Locations tab) ========
+
+    /** Adds or updates a place: { id?, name, address, lat, lng }. Resolves the place. */
+    savePlace: function (pl) {
+      sync();
+      if (pl.id == null) { pl.id = db.places.reduce(function (m, x) { return Math.max(m, x.id); }, 0) + 1; db.places.push(pl); }
+      else { db.places = db.places.map(function (x) { return x.id === pl.id ? Object.assign({}, x, pl) : x; }); }
+      save(); sync(); return delay(pl);
+    },
+    deletePlace: function (id) {
+      sync();
+      db.places = db.places.filter(function (x) { return x.id !== id || x.main; });
+      Object.keys(db.providerPlaces || {}).forEach(function (pid) { db.providerPlaces[pid] = db.providerPlaces[pid].filter(function (r) { return r.placeId !== id; }); });
+      Object.keys(db.placeTravel || {}).forEach(function (k) { if (k.split('-').indexOf(String(id)) >= 0) { delete db.placeTravel[k]; } });
+      save(); sync(); return delay(true);
+    },
+    /** Where a provider works: [{ placeId, days }] (replaces their list). */
+    setProviderPlaces: function (pid, rows) {
+      sync(); db.providerPlaces = db.providerPlaces || {}; db.providerPlaces[pid] = clone(rows); save(); sync(); return delay(true);
+    },
+    /** Travel minutes between two places set by hand; null goes back to the estimate. */
+    setTravel: function (a, b, minutes) {
+      sync(); db.placeTravel = db.placeTravel || {};
+      var k = Math.min(a, b) + '-' + Math.max(a, b);
+      if (minutes == null) { delete db.placeTravel[k]; } else { db.placeTravel[k] = minutes; }
+      save(); sync(); return delay(true);
+    },
+    reloadPlaces: function () { sync(); return delay(true); },
 
     // ======== gift cards ========
 
@@ -611,7 +657,7 @@
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; db.giftCards = []; delete db.clientSession; save();
-      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules || db.closed || db.specials) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; delete db.closed; delete db.specials; save(); location.reload(); }
+      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules || db.closed || db.specials || db.places) { delete db.places; delete db.providerPlaces; delete db.placeTravel; delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; delete db.closed; delete db.specials; save(); location.reload(); }
       return delay(true);
     },
   };

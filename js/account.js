@@ -60,12 +60,13 @@ window.BuffAPI.ready.then(function () {
     }
     var msg = state.cancelMsg[b.id];
     var cal = upcoming && b.status === 'booked' && state.confirming !== b.id
-      ? BuffCal.menu({ id: b.id, date: b.date, start: b.start, mins: b.mins, services: b.services, provider: b.provider === 'any' ? '' : providerName(b.provider), guests: b.guests }, { compact: true })
+      ? BuffCal.menu({ id: b.id, date: b.date, start: b.start, mins: b.mins, services: b.services, provider: b.provider === 'any' ? '' : providerName(b.provider), guests: b.guests, place: window.BuffPlaces && BuffPlaces.byId(b.placeId) }, { compact: true })
       : '';
     return '<li class="card summary a-visit' + (b.status === 'cancelled' ? ' is-cancelled' : '') + '">' +
       (status ? '<div class="label">' + status + '</div>' : '') +
       '<div class="b">' + esc(upcoming ? longDate(b.date) : shortDate(b.date)) + ' at ' + esc(API.formatTime(b.start)) + '</div>' +
       '<div>' + esc(b.services.join(' + ')) + '</div>' +
+      (window.BuffPlaces && BuffPlaces.several() && BuffPlaces.byId(b.placeId == null ? BuffPlaces.mainId() : b.placeId) ? '<div class="sm">At ' + esc(BuffPlaces.byId(b.placeId == null ? BuffPlaces.mainId() : b.placeId).name + ', ' + BuffPlaces.byId(b.placeId == null ? BuffPlaces.mainId() : b.placeId).address) + '</div>' : '') +
       '<div class="muted sm">' + esc(providerName(b.provider) || '') + ' · ' + b.mins + ' min' + (b.guests > 1 ? ' · ' + b.guests + ' guests' : '') + ' · ' + money(b.total) + '</div>' +
       '<div class="muted xs">Reference ' + esc(b.id) + '</div>' +
       (msg ? '<p class="notice" role="alert">' + esc(msg) + '</p>' : '') + cal + actions +

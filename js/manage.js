@@ -42,6 +42,7 @@ window.BuffAPI.ready.then(function () {
     return '<div class="card summary"><div class="label">' + (b.status === 'cancelled' ? 'Cancelled' : 'Your visit') + '</div>' +
       '<div class="b lg">' + esc(longDate(b.date)) + ' at ' + esc(API.formatTime(b.start)) + '</div>' +
       '<div>' + esc(b.services.join(' + ')) + '</div>' +
+      (window.BuffPlaces && BuffPlaces.several() && BuffPlaces.byId(b.placeId == null ? BuffPlaces.mainId() : b.placeId) ? '<div class="sm">At ' + esc(BuffPlaces.byId(b.placeId == null ? BuffPlaces.mainId() : b.placeId).name + ', ' + BuffPlaces.byId(b.placeId == null ? BuffPlaces.mainId() : b.placeId).address) + '</div>' : '') +
       '<div class="muted sm">' + esc(who) + ' · ' + b.mins + ' min' + (b.guests > 1 ? ' · ' + b.guests + ' guests' : '') + ' · ' + money(b.total) + '</div>' +
       '<div class="muted xs">Reference ' + esc(b.id) + '</div></div>';
   }

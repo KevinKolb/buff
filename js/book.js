@@ -23,6 +23,7 @@ window.BuffAPI.ready.then(function () {
     selected: [],
     guests: 1,
     provider: 'any',
+    place: null,        // where (only asked when more than one place fits)
     date: /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') || '') && params.get('date') >= isoDate(new Date()) ? params.get('date') : isoDate(new Date()),
     slots: null,
     slotsLoading: false,
@@ -79,12 +80,26 @@ window.BuffAPI.ready.then(function () {
     });
   }
 
+  // ----- places (see places.js) -----
+  var PL = window.BuffPlaces;
+  function placeChoices() { return PL && state.selected.length ? PL.forServices(state.selected, API.canDo) : []; }
+  function placeId() {
+    var ch = placeChoices();
+    if (state.place != null && ch.some(function (id) { return String(id) === String(state.place); })) { return state.place; }
+    if (state.provider !== 'any' && PL) {
+      var theirs = ch.filter(function (id) { return PL.worksThere(state.provider, id); });
+      if (theirs.length === 1) { return theirs[0]; }
+    }
+    return ch.length === 1 ? ch[0] : null;
+  }
+  function placeShort(id) { var p = PL && PL.several() && PL.byId(id == null ? PL.mainId() : id); return p && !p.main ? p.name : ''; }
+
   function loadSlots() {
     state.slot = null;
-    if (!state.selected.length) { state.slots = null; render(); return; }
+    if (!state.selected.length || placeId() == null) { state.slots = null; render(); return; }
     var d = state.date, t = totals();
     state.slotsLoading = true; render();
-    API.getAvailability(d, t.mins, state.provider, state.guests, state.selected).then(function (res) {
+    API.getAvailability(d, t.mins, state.provider, state.guests, state.selected, null, placeId()).then(function (res) {
       if (d !== state.date) { return; }
       state.slots = res; state.slotsLoading = false; render();
     }, function () {
@@ -128,12 +143,20 @@ window.BuffAPI.ready.then(function () {
   }
 
   function viewWhen() {
-    var able = CFG.providers.filter(function (p) { return API.canDo(p.id, state.selected); });
+    var choices = placeChoices(), here = placeId();
+    var able = CFG.providers.filter(function (p) { return API.canDo(p.id, state.selected) && (choices.length < 2 || here == null || PL.worksThere(p.id, here)); });
+    var placeField = choices.length > 1
+      ? '<div class="field"><label for="bk-place">Where</label><select id="bk-place" name="place">' +
+          (here == null ? '<option value="">Pick a place</option>' : '') +
+          choices.map(function (id) { var pl = PL.byId(id); return '<option value="' + esc(id) + '"' + (String(id) === String(here) ? ' selected' : '') + '>' + esc(pl.name + ' · ' + pl.address) + '</option>'; }).join('') +
+        '</select></div>'
+      : '';
     var pros = [['any', 'First available']].concat(able.map(function (p) { return [p.id, p.name]; })).map(function (p) {
       return '<option value="' + esc(p[0]) + '"' + (p[0] === state.provider ? ' selected' : '') + '>' + esc(p[1]) + '</option>';
     }).join('');
     var body;
     if (!state.selected.length) { body = '<p class="muted sm">Pick services to see open times.</p>'; }
+    else if (here == null && choices.length > 1) { body = '<p class="muted sm">Pick where to see open times.</p>'; }
     else if (!able.length) { body = '<p class="notice">No provider is set up for ' + (state.selected.length > 1 ? 'all of ' : '') + esc(state.selected.join(' + ')) + '. Book them as separate visits, or a manager can change who does what on the Team tab.</p>'; }
     else if (able.length < state.guests) { body = '<p class="notice">Only ' + able.length + ' provider' + (able.length === 1 ? ' does' : 's do') + ' this, so you can book up to ' + able.length + ' guest' + (able.length === 1 ? '' : 's') + ' at once.</p>'; }
     else if (state.slotsLoading || !state.slots) { body = '<p class="muted sm" role="status">Finding open times…</p>'; }
@@ -150,7 +173,7 @@ window.BuffAPI.ready.then(function () {
           }).join('') + '</div>'
         : '<p class="muted sm">No openings this day for ' + totals().mins + ' minutes' + (state.guests > 1 ? ' and ' + state.guests + ' guests' : '') + '. Try another day or provider.</p>';
     }
-    return '<div class="card form bk-when"><div class="b">2. Provider, day and time</div>' +
+    return '<div class="card form bk-when"><div class="b">2. ' + (choices.length > 1 ? 'Place, provider' : 'Provider') + ', day and time</div>' + placeField +
       '<div class="field"><label for="bk-pro">Provider</label><select id="bk-pro" name="provider">' + pros + '</select>' +
         (state.selected.length && able.length < CFG.providers.length ? '<span class="muted xs">Only providers set up for ' + (state.selected.length > 1 ? 'all of these services' : 'this service') + ' are listed.</span>' : '') + '</div>' +
       '<div class="field"><label for="bk-date">Day</label><div class="bk-datenav">' +
@@ -282,7 +305,7 @@ window.BuffAPI.ready.then(function () {
       '<div class="done-badge">✓</div>' +
       '<h2 class="h1 center">Booked for ' + esc(r.client.name) + '</h2>' +
       '<p class="center">Read them their reference: <b>' + esc(r.id) + '</b></p>' +
-      '<p class="center muted sm">' + esc(longDate(r.date)) + ' at ' + esc(fmt(r.start)) + ' · ' + esc(r.services.join(' + ')) + '</p>' +
+      '<p class="center muted sm">' + esc(longDate(r.date)) + ' at ' + esc(fmt(r.start)) + ' · ' + esc(r.services.join(' + ')) + (placeShort(r.placeId) ? ' · at ' + esc(placeShort(r.placeId)) : '') + '</p>' +
       '<p class="center muted xs">They can cancel online with this reference and their mobile number.</p>' +
       '<button class="btn-primary" data-act="another">Book another client</button>' +
       '<a class="btn-outline as-link" href="staff.html?date=' + esc(r.date) + '">Open the schedule</a></div>';
@@ -311,7 +334,7 @@ window.BuffAPI.ready.then(function () {
       live.filter(function (b) { return b.providerIds.indexOf(p.id) >= 0; }).forEach(function (b) {
         var h = b.mins * PX - 2;
         blocks += '<button class="s-appt is-' + b.status + (b.sample ? ' is-sample' : '') + (h < 34 ? ' is-short' : '') + '" data-act="pick" data-v="' + esc(b.id) + '" style="top:' + ((b.start - hrs.open) * PX) + 'px;height:' + h + 'px">' +
-          '<span class="s-appt-time">' + fmt(b.start) + '</span><span class="s-appt-name">' + esc(b.client.name) + '</span></button>';
+          '<span class="s-appt-time">' + fmt(b.start) + '</span><span class="s-appt-name">' + esc(b.client.name) + (placeShort(b.placeId) ? ' · ' + esc(placeShort(b.placeId)) : '') + '</span></button>';
       });
       (state.day.holds || []).filter(function (h) { return h.providerIds.indexOf(p.id) >= 0; }).forEach(function (h) {
         blocks += '<button class="s-hold" data-act="pick-hold" data-v="' + esc(h.id) + '" style="top:' + ((h.start - hrs.open) * PX) + 'px;height:' + (h.mins * PX - 2) + 'px">' +
@@ -407,7 +430,7 @@ window.BuffAPI.ready.then(function () {
     var t = totals();
     API.staffCreateBooking({
       services: state.selected.slice(), guests: state.guests, mins: t.mins, total: t.price,
-      provider: state.provider, date: state.date, time: state.slot.time, providerIds: state.slot.providerIds,
+      provider: state.provider, date: state.date, time: state.slot.time, providerIds: state.slot.providerIds, place: placeId(),
       policyAgreed: true, clientId: state.clientId || undefined, occasion: state.client.occasion.trim(),
       client: { name: state.client.name.trim(), phone: state.client.phone.trim(), email: state.client.email.trim(), note: state.client.note.trim(), staffNote: state.client.staffNote.trim() },
     }).then(function (rec) {
@@ -463,7 +486,7 @@ window.BuffAPI.ready.then(function () {
       render(); var q = $('#bk-find'); if (q) { q.focus(); }
     }
     else if (act === 'another') {
-      state.result = null; state.selected = []; state.guests = 1; state.provider = 'any'; state.slot = null; state.slots = null;
+      state.result = null; state.selected = []; state.guests = 1; state.provider = 'any'; state.place = null; state.slot = null; state.slots = null;
       state.client = { name: '', phone: '', email: '', note: '', staffNote: '', occasion: '' }; state.policy = false; state.errors = {};
       state.clientId = null; state.clientQuery = '';
       render(); window.scrollTo(0, 0);
@@ -504,7 +527,16 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('change', function (e) {
     var t = e.target;
     if (t.id === 'bk-policy') { state.policy = t.checked; if (t.checked) { delete state.errors.policy; } }
-    else if (t.id === 'bk-pro') { state.provider = t.value; loadSlots(); }
+    else if (t.id === 'bk-pro') {
+      state.provider = t.value;
+      if (PL && t.value !== 'any' && state.place != null && !PL.worksThere(t.value, state.place)) { state.place = null; }
+      loadSlots();
+    }
+    else if (t.id === 'bk-place') {
+      state.place = t.value ? +t.value : null;
+      if (PL && state.provider !== 'any' && state.place != null && !PL.worksThere(state.provider, state.place)) { state.provider = 'any'; }
+      loadSlots();
+    }
     else if (t.id === 'bk-date' && /^\d{4}-\d{2}-\d{2}$/.test(t.value)) { setDate(t.value < isoDate(new Date()) ? isoDate(new Date()) : t.value); }
   });
 

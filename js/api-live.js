@@ -33,7 +33,7 @@
     return {
       id: r.id, date: r.date, start: r.start_min, time: hhmm(r.start_min), mins: r.mins,
       provider: r.provider_pref, providerIds: r.provider_ids, services: r.services, guests: r.guests,
-      total: +r.total, status: r.status, cancelledBy: r.cancelled_by, createdAt: r.created_at, bookedBy: r.booked_by, clientId: r.client_id, sample: !!r.is_sample, occasion: r.occasion || '', discountNote: r.discount_note || '',
+      total: +r.total, status: r.status, cancelledBy: r.cancelled_by, createdAt: r.created_at, bookedBy: r.booked_by, clientId: r.client_id, placeId: r.place_id == null ? null : r.place_id, sample: !!r.is_sample, occasion: r.occasion || '', discountNote: r.discount_note || '',
       client: { name: r.client_name, phone: r.client_phone, email: r.client_email, note: r.note },
     };
   }
@@ -62,8 +62,9 @@
     return unwrap(res);
   }
 
-  function availability(dateISO, mins, providerId, guests, services, holdToken) {
+  function availability(dateISO, mins, providerId, guests, services, holdToken, place) {
     var args = { p_date: dateISO, p_mins: mins, p_provider: providerId, p_guests: guests };
+    if (place != null && CFG.places && CFG.places.length) { args.p_place = place; } // only once the places table exists
     if (holdToken) { args.p_hold_token = holdToken; } // only sent while a hold exists, so older databases still work
     // only once the provider-services table exists (older databases don't take this)
     if (services && services.length && CFG.qualified) { args.p_services = services; }
@@ -89,6 +90,8 @@
     sb.from('closed_dates').select('date,label').gte('date', isoToday()).then(function (res) { return res.error ? [] : res.data; }),
     // current specials; empty if that table isn't set up yet
     sb.from('specials').select('*').then(function (res) { return res.error ? [] : res.data; }),
+    // places and travel; empty if those tables aren't set up yet
+    loadPlaces(),
   ]).then(function (r) {
     var s = r[0];
     CFG.booking.slotStepMinutes = s.slot_step_min;
@@ -108,7 +111,22 @@
     r[5].forEach(function (c) { CFG.closedDates[c.date] = c.label || ''; });
     serviceNames = {}; r[3].forEach(function (v) { serviceNames[v.id] = v.name; });
     CFG.specials = r[6].map(fromSpecialRow);
+    CFG.travelDefaultMin = s.travel_default_min || 30;
   });
+
+  function loadPlaces() {
+    return Promise.all([
+      sb.from('places').select('*').order('id').then(function (res) { return res.error ? [] : res.data; }),
+      sb.from('provider_places').select('*').then(function (res) { return res.error ? [] : res.data; }),
+      sb.from('place_travel').select('*').then(function (res) { return res.error ? [] : res.data; }),
+    ]).then(function (r) {
+      CFG.places = r[0].map(function (x) { return { id: x.id, name: x.name, address: x.address, lat: x.lat, lng: x.lng, main: x.is_main }; });
+      CFG.providerPlaces = {};
+      r[1].forEach(function (x) { (CFG.providerPlaces[x.provider_id] = CFG.providerPlaces[x.provider_id] || []).push({ placeId: x.place_id, days: x.days || [] }); });
+      CFG.placeTravel = {};
+      r[2].forEach(function (x) { CFG.placeTravel[x.a + '-' + x.b] = x.minutes; });
+    });
+  }
 
   // business details from settings (older databases don't have them: keep config.js values)
   function applyBusiness(s) {
@@ -221,7 +239,7 @@
     // ======== holding a time while a client finishes booking ========
 
     holdSlot: function (h) {
-      return sb.rpc('hold_slot', { p: { holdToken: h.token, date: h.date, time: h.time, provider: h.provider, guests: h.guests, services: h.services } })
+      return sb.rpc('hold_slot', { p: { holdToken: h.token, date: h.date, time: h.time, provider: h.provider, guests: h.guests, services: h.services, place: h.place } })
         .then(unwrap).then(function (r) { return { expiresAt: Date.parse(r.expiresAt), providerIds: r.providerIds }; });
     },
     releaseHold: function (token) { return sb.rpc('release_hold', { p_token: token }).then(unwrap); },
@@ -407,6 +425,28 @@
         slot_step_min: r.slotStepMinutes, days_ahead: r.daysAhead, min_notice_min: r.minNoticeMinutes, max_guests: r.maxGuests,
       }).eq('id', 1).then(unwrap).then(function () { Object.assign(CFG.booking, r); return true; });
     },
+
+    // ======== places (Locations tab) ========
+
+    savePlace: function (pl) {
+      var row = { name: pl.name, address: pl.address, lat: pl.lat == null ? null : pl.lat, lng: pl.lng == null ? null : pl.lng };
+      var q = pl.id == null ? sb.from('places').insert(row) : sb.from('places').update(row).eq('id', pl.id);
+      return q.select().single().then(unwrap).then(function (x) { return loadPlaces().then(function () { return { id: x.id, name: x.name, address: x.address, lat: x.lat, lng: x.lng, main: x.is_main }; }); });
+    },
+    deletePlace: function (id) { return sb.from('places').delete().eq('id', id).then(unwrap).then(loadPlaces); },
+    setProviderPlaces: function (pid, rows) {
+      return sb.from('provider_places').delete().eq('provider_id', pid).then(unwrap).then(function () {
+        if (!rows.length) { return null; }
+        return sb.from('provider_places').insert(rows.map(function (r) { return { provider_id: pid, place_id: r.placeId, days: r.days || [] }; })).then(unwrap);
+      }).then(loadPlaces);
+    },
+    setTravel: function (a, b, minutes) {
+      var lo = Math.min(a, b), hi = Math.max(a, b);
+      var q = minutes == null ? sb.from('place_travel').delete().eq('a', lo).eq('b', hi)
+        : sb.from('place_travel').upsert({ a: lo, b: hi, minutes: minutes });
+      return q.then(unwrap).then(loadPlaces);
+    },
+    reloadPlaces: function () { return loadPlaces(); },
 
     // ======== gift cards ========
 
