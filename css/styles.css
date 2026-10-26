@@ -243,3 +243,6 @@ a.link { display: flex; align-items: center; justify-content: center; }
   .app-book { grid-template-areas: "top top" "nav nav" "progress aside" "main aside"; }
   .app-book .site-nav { grid-area: nav; }
 }
+@media (max-width: 400px) { .site-nav { gap: 18px; } .site-nav a { letter-spacing: .1em; } }
+.site-nav a { white-space: nowrap; }
+@media (max-width: 360px) { .site-nav { gap: 14px; padding-left: 8px; padding-right: 8px; } .site-nav a { font-size: 11px; letter-spacing: .06em; } }
