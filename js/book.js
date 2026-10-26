@@ -55,14 +55,17 @@ window.BuffAPI.ready.then(function () {
   function providerName(id) { if (id === 'any') { return 'First available'; } var p = CFG.providers.filter(function (x) { return x.id === id; })[0]; return p ? p.name : id; }
   function hoursOn(iso) { var h = CFG.hours[fromISO(iso).getDay()]; return h ? { open: API.toMin(h.open), close: API.toMin(h.close) } : null; }
   function fmt(m) { return API.formatTime(m); }
-  function priceAt(timeHHMM) { // with specials for this day and time (see pricing.js)
-    return BuffPricing.visit(state.selected, timeHHMM ? state.date : null, timeHHMM ? API.toMin(timeHHMM) : null);
+  // all guests, with specials for this day and time and each provider's own prices (see pricing.js)
+  function priceAt(timeHHMM, slot) {
+    var pids = slot && slot.providerIds && slot.providerIds.length ? slot.providerIds : null;
+    if (!pids) { pids = []; for (var i = 0; i < state.guests; i++) { pids.push(i === 0 && state.provider !== 'any' ? state.provider : null); } }
+    return BuffPricing.group(state.selected, timeHHMM ? state.date : null, timeHHMM ? API.toMin(timeHHMM) : null, pids);
   }
   function totals() {
     var mins = 0;
     state.selected.forEach(function (n) { var s = svc(n); if (s) { mins += s.mins; } });
-    var pr = priceAt(state.slot ? state.slot.time : null);
-    return { mins: mins, price: pr.total * state.guests, regular: pr.subtotal * state.guests, pricing: pr };
+    var pr = priceAt(state.slot ? state.slot.time : null, state.slot);
+    return { mins: mins, price: pr.total, regular: pr.subtotal, pricing: pr };
   }
   function clockAt(ms) { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
   function hasRole(r) { return !!(state.staff && state.staff.roles && state.staff.roles.indexOf(r) >= 0); }
@@ -167,9 +170,9 @@ window.BuffAPI.ready.then(function () {
       body = open.length
         ? '<div class="times">' + open.map(function (s) {
             var on = state.slot && state.slot.time === s.time;
-            var at = priceAt(s.time), deal = at.total < at.subtotal;
-            return '<button class="time' + (on ? ' is-on' : '') + (deal ? ' has-deal' : '') + '" data-act="slot" data-v="' + s.time + '" aria-pressed="' + on + '">' + s.label +
-              (deal ? '<span class="time-price">' + money(at.total * state.guests) + '</span>' : '') + '</button>';
+            var at = priceAt(s.time, s), deal = at.total < at.subtotal;
+            return '<button class="time' + (on ? ' is-on' : '') + (deal ? ' has-deal' : '') + '" data-act="slot" data-v="' + s.time + '" aria-pressed="' + on + '"' + '>' + s.label +
+              (deal ? '<span class="time-price">' + money(at.total) + '</span>' : '') + '</button>';
           }).join('') + '</div>'
         : '<p class="muted sm">No openings this day for ' + totals().mins + ' minutes' + (state.guests > 1 ? ' and ' + state.guests + ' guests' : '') + '. Try another day or provider.</p>';
     }

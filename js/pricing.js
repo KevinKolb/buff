@@ -15,6 +15,12 @@
   function toMin(hhmm) { var p = String(hhmm).split(':'); return +p[0] * 60 + +p[1]; }
   function round2(n) { return Math.round(n * 100) / 100; }
   function svc(name) { return cfg().services.filter(function (s) { return s.name === name; })[0]; }
+  /** A provider's own price for a service (Team tab), or the menu price. */
+  function priceFor(name, providerId) {
+    var own = providerId && (cfg().providerPrices || {})[providerId];
+    if (own && own[name] != null) { return own[name]; }
+    var s = svc(name); return s ? s.price : 0;
+  }
   function inScope(sp, name) { return !sp.services || !sp.services.length || sp.services.indexOf(name) >= 0; }
   function todayISO() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
 
@@ -38,20 +44,20 @@
     return sp.discountValue;
   }
 
-  /** One guest's visit: { subtotal (regular), total, note, lines: [{ name, regular, price, special }] } */
-  function visit(names, dateISO, start) {
+  /** One guest's visit (with providerId's own prices, if given): { subtotal (before specials), total, note, lines: [{ name, regular, price, special }] } */
+  function visit(names, dateISO, start, providerId) {
     var specials = cfg().specials || [], used = [], lines = [], subtotal = 0, total = 0;
     names.forEach(function (n) {
       var s = svc(n); if (!s) { return; }
-      var best = s.price, bestSp = null;
+      var base = priceFor(n, providerId), best = base, bestSp = null;
       specials.forEach(function (sp) {
         if (sp.kind !== 'time' || !on(sp, dateISO, start) || !inScope(sp, n)) { return; }
-        var c = cut(sp, s.price);
+        var c = cut(sp, base);
         if (c < best) { best = c; bestSp = sp; }
       });
       best = round2(best);
-      subtotal += s.price; total += best;
-      lines.push({ name: n, regular: s.price, price: best, special: bestSp ? bestSp.name : '' });
+      subtotal += base; total += best;
+      lines.push({ name: n, regular: base, price: best, special: bestSp ? bestSp.name : '' });
       if (bestSp && used.indexOf(bestSp.name) < 0) { used.push(bestSp.name); }
     });
     var bestDisc = 0, discSp = null;
@@ -66,6 +72,16 @@
     total = Math.max(round2(total - bestDisc), 0);
     if (discSp) { used.push(discSp.name); }
     return { subtotal: round2(subtotal), total: total, note: used.join(', '), quantity: discSp ? { name: discSp.name, amount: round2(bestDisc) } : null, lines: lines };
+  }
+
+  /** Several guests, one provider id (or null = not known yet) each: totals added up; lines are the first guest's. */
+  function group(names, dateISO, start, providerIds) {
+    var vs = (providerIds && providerIds.length ? providerIds : [null]).map(function (pid) { return visit(names, dateISO, start, pid); });
+    var out = Object.assign({}, vs[0]);
+    out.subtotal = round2(vs.reduce(function (m, v) { return m + v.subtotal; }, 0));
+    out.total = round2(vs.reduce(function (m, v) { return m + v.total; }, 0));
+    out.perGuest = vs[0].total;
+    return out;
   }
 
   /** Specials that are on now or coming up (not ended). */
@@ -113,5 +129,5 @@
     return { deal: deal.charAt(0).toUpperCase() + deal.slice(1), what: what, when: bits.length ? bits.join(' · ') : 'Any day, any time' };
   }
 
-  window.BuffPricing = { on: on, visit: visit, current: current, hasSpecial: hasSpecial, describe: describe, money: money, DAY: DAY };
+  window.BuffPricing = { on: on, visit: visit, group: group, priceFor: priceFor, current: current, hasSpecial: hasSpecial, describe: describe, money: money, DAY: DAY };
 })();

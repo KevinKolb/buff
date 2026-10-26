@@ -44,6 +44,7 @@
     if (db.services) { CFG.services = db.services.filter(function (s) { return s.active; }); }    // edited on the Menu tab
     if (db.categoryOrder) { CFG.categoryOrder = db.categoryOrder; }
     CFG.qualified = qualifiedNames();                                       // who does which services (Team tab)
+    CFG.providerPrices = priceNames();                                      // providers' own prices (Team tab)
     if (db.business) { Object.assign(CFG.business, db.business); }          // Business tab
     if (db.hours) { CFG.hours = db.hours; }
     if (db.rules) { Object.assign(CFG.booking, db.rules); }
@@ -242,9 +243,9 @@
       rec.clientId = clientFor(payload, payload._staff);
       delete rec._staff; delete rec.client.staffNote;
       delete rec.holdToken;
-      if (window.BuffPricing) { // the price is decided here, like the database does
-        var pr = window.BuffPricing.visit(rec.services, rec.date, start);
-        rec.total = pr.total * (rec.guests || 1); rec.discountNote = pr.note;
+      if (window.BuffPricing) { // the price is decided here, like the database does: each guest pays their provider's price
+        var pr = window.BuffPricing.group(rec.services, rec.date, start, rec.providerIds);
+        rec.total = pr.total; rec.discountNote = pr.note;
       }
       db.holds = (db.holds || []).filter(function (x) { return x.token !== payload.holdToken; }); // the hold became a booking
       db.bookings.push(rec); save();
@@ -524,9 +525,19 @@
     /** { providerId: [serviceId, ...] } for every provider. */
     listQualifications: function () { sync(); return delay(allQualified()); },
 
-    setQualifications: function (providerId, serviceIds) {
+    /** { providerId: { serviceId: price } }: providers' own prices (none = the menu price). */
+    listProviderPrices: function () { sync(); return delay(db.providerPrices || {}); },
+
+    /** prices (optional): { serviceId: price } for services where this provider charges their own price. */
+    setQualifications: function (providerId, serviceIds, prices) {
       sync();
       var q = allQualified(); q[providerId] = serviceIds.slice(); db.qualified = q;
+      if (prices) {
+        db.providerPrices = db.providerPrices || {}; var mine = {};
+        serviceIds.forEach(function (id) { if (prices[id] != null) { mine[id] = prices[id]; } });
+        db.providerPrices[providerId] = mine;
+      }
+      CFG.providerPrices = priceNames();
       CFG.qualified = qualifiedNames(); save();
       return delay(true);
     },
@@ -657,7 +668,7 @@
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; db.giftCards = []; delete db.clientSession; save();
-      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules || db.closed || db.specials || db.places) { delete db.places; delete db.providerPlaces; delete db.placeTravel; delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; delete db.closed; delete db.specials; save(); location.reload(); }
+      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules || db.closed || db.specials || db.places || db.providerPrices) { delete db.providerPrices; delete db.places; delete db.providerPlaces; delete db.placeTravel; delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; delete db.closed; delete db.specials; save(); location.reload(); }
       return delay(true);
     },
   };
@@ -700,6 +711,12 @@
     var byId = {}, q = allQualified(), out = {};
     allServices().forEach(function (s) { byId[s.id] = s.name; });
     Object.keys(q).forEach(function (pid) { out[pid] = q[pid].map(function (id) { return byId[id]; }).filter(Boolean); });
+    return out;
+  }
+  function priceNames() {
+    var byId = {}, out = {}, pp = db.providerPrices || {};
+    allServices().forEach(function (s) { byId[s.id] = s.name; });
+    Object.keys(pp).forEach(function (pid) { out[pid] = {}; Object.keys(pp[pid]).forEach(function (id) { if (byId[id]) { out[pid][byId[id]] = pp[pid][id]; } }); });
     return out;
   }
   function canDo(providerId, services) {

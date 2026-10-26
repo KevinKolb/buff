@@ -85,7 +85,7 @@
     sb.from('providers').select('*').eq('active', true).order('sort').then(unwrap),
     sb.from('services').select('*').eq('active', true).order('sort').then(unwrap),
     // who does which services; null if that table isn't set up yet (then no filtering)
-    sb.from('provider_services').select('provider_id,service_id').then(function (res) { return res.error ? null : res.data; }),
+    sb.from('provider_services').select('*').then(function (res) { return res.error ? null : res.data; }),
     // closed days from today on; empty if that table isn't set up yet
     sb.from('closed_dates').select('date,label').gte('date', isoToday()).then(function (res) { return res.error ? [] : res.data; }),
     // current specials; empty if that table isn't set up yet
@@ -107,6 +107,7 @@
     CFG.providers = r[2].map(publicProvider);
     CFG.services = r[3].map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } if (v.description) { o.description = v.description; } return o; });
     CFG.qualified = qualifiedFrom(r[4], r[3]);
+    CFG.providerPrices = pricesFrom(r[4], r[3]);
     CFG.closedDates = {};
     r[5].forEach(function (c) { CFG.closedDates[c.date] = c.label || ''; });
     serviceNames = {}; r[3].forEach(function (v) { serviceNames[v.id] = v.name; });
@@ -161,6 +162,13 @@
     };
   }
 
+  // providers' own prices: { providerId: { serviceName: price } }
+  function pricesFrom(rows, services) {
+    var byId = {}, out = {};
+    services.forEach(function (v) { byId[v.id] = v.name; });
+    (rows || []).forEach(function (r) { if (r.price != null && byId[r.service_id]) { (out[r.provider_id] = out[r.provider_id] || {})[byId[r.service_id]] = +r.price; } });
+    return out;
+  }
   function qualifiedFrom(rows, services) {
     if (!rows) { return null; }
     var byId = {}, out = {};
@@ -520,14 +528,26 @@
       });
     },
 
-    setQualifications: function (providerId, serviceIds) {
+    listProviderPrices: function () {
+      return sb.from('provider_services').select('*').then(function (res) {
+        var out = {};
+        (res.error ? [] : res.data).forEach(function (r) { if (r.price != null) { (out[r.provider_id] = out[r.provider_id] || {})[r.service_id] = +r.price; } });
+        return out;
+      });
+    },
+
+    setQualifications: function (providerId, serviceIds, prices) {
       return sb.from('provider_services').delete().eq('provider_id', providerId).then(unwrap).then(function () {
         if (!serviceIds.length) { return null; }
-        return sb.from('provider_services').insert(serviceIds.map(function (id) { return { provider_id: providerId, service_id: id }; })).then(unwrap);
+        return sb.from('provider_services').insert(serviceIds.map(function (id) {
+          var row = { provider_id: providerId, service_id: id };
+          if (prices && prices[id] != null) { row.price = prices[id]; } // only sent when set, so older databases still work
+          return row;
+        })).then(unwrap);
       }).then(function () {
         // keep this page's copy in step
-        return Promise.all([sb.from('provider_services').select('provider_id,service_id').then(unwrap), sb.from('services').select('id,name').eq('active', true).then(unwrap)]);
-      }).then(function (r) { CFG.qualified = qualifiedFrom(r[0], r[1]); return true; });
+        return Promise.all([sb.from('provider_services').select('*').then(unwrap), sb.from('services').select('id,name').eq('active', true).then(unwrap)]);
+      }).then(function (r) { CFG.qualified = qualifiedFrom(r[0], r[1]); CFG.providerPrices = pricesFrom(r[0], r[1]); return true; });
     },
 
     // ======== staff logins (managers) ========

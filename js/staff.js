@@ -24,6 +24,8 @@ window.BuffAPI.ready.then(function () {
     teamMsg: {},
     quals: {},         // { providerId: [serviceId] } who does which services
     qdrafts: {},       // unsaved service ticks, by provider id
+    pprices: {},       // providers' own prices: { providerId: { serviceId: price } }
+    pdrafts: {},       // unsaved own prices, by provider id
     qOpen: {},         // which providers' service lists are expanded
     settings: null,    // Business tab: { business, hours, rules, hasBusiness }
     bizDraft: {},      // unsaved edits, by part: 'business' | 'hours' | 'rules'
@@ -278,7 +280,17 @@ window.BuffAPI.ready.then(function () {
   // ---------- team (managers) ----------
   // Who-does-what needs the provider_services table (20261026000800). If the
   // database doesn't have it yet, the Team and Menu tabs still work without it.
-  function loadQuals() { return API.listQualifications().catch(function () { return null; }); }
+  function loadQuals() {
+    return Promise.all([API.listQualifications(), API.listProviderPrices ? API.listProviderPrices().catch(function () { return {}; }) : {}])
+      .then(function (r) { state.pprices = r[1] || {}; return r[0]; }, function () { return null; });
+  }
+  // a provider's own price for a service: typed (string) or saved (number); '' = the menu price
+  function ownPrice(pid, sid) {
+    var d = (state.pdrafts[pid] || {})[sid];
+    if (d != null) { return d; }
+    var v = (state.pprices[pid] || {})[sid];
+    return v == null ? '' : v;
+  }
 
   function loadTeam() {
     state.loadError = null;
@@ -314,13 +326,16 @@ window.BuffAPI.ready.then(function () {
       return '<fieldset class="s-qcat"><legend><label class="agree"><input type="checkbox" data-qual="' + esc(p.id) + '" data-cat="' + esc(c) + '"' + (on === inCat.length ? ' checked' : '') + '>' +
           '<span><b>' + esc(c) + '</b> <span class="muted xs">' + on + ' of ' + inCat.length + '</span></span></label></legend>' +
         '<div class="s-qlist">' + inCat.map(function (s) {
-          return '<label class="agree"><input type="checkbox" data-qual="' + esc(p.id) + '" value="' + esc(s.id) + '"' + (mine.indexOf(s.id) >= 0 ? ' checked' : '') + '><span>' + esc(s.name) + (s.active ? '' : ' <span class="muted xs">(hidden)</span>') + '</span></label>';
+          var does = mine.indexOf(s.id) >= 0, own = ownPrice(p.id, s.id);
+          return '<div class="s-qrow"><label class="agree"><input type="checkbox" data-qual="' + esc(p.id) + '" value="' + esc(s.id) + '"' + (does ? ' checked' : '') + '><span>' + esc(s.name) + (s.active ? '' : ' <span class="muted xs">(hidden)</span>') + '</span></label>' +
+            (does ? '<span class="s-qprice' + (own !== '' && +own !== s.price ? ' is-own' : '') + '"><label class="sr-only" for="qp-' + esc(p.id) + '-' + s.id + '">' + esc(p.name) + '’s price for ' + esc(s.name) + '</label><span aria-hidden="true">$</span>' +
+              '<input id="qp-' + esc(p.id) + '-' + s.id + '" data-qprice="' + esc(p.id) + '" data-sid="' + s.id + '" type="number" inputmode="decimal" min="0" step="1" placeholder="' + s.price + '" value="' + esc(own) + '"></span>' : '') + '</div>';
         }).join('') + '</div></fieldset>';
     }).join('');
     var count = mine.filter(function (id) { return services.some(function (s) { return s.id === id; }); }).length;
     return '<details class="s-quals" data-q="' + esc(p.id) + '"' + (state.qOpen[p.id] ? ' open' : '') + '>' +
       '<summary>Services they do: <b>' + count + ' of ' + services.length + '</b>' + (count ? '' : ' <span class="s-warn">Not bookable yet</span>') + '</summary>' +
-      '<p class="muted xs">Clients and staff can only book ' + esc(p.name) + ' for the services ticked here.</p>' + groups +
+      '<p class="muted xs">Clients and staff can only book ' + esc(p.name) + ' for the services ticked here. The price box is ' + esc(p.name) + '’s own price for that service, higher or lower than the menu; leave it empty for the menu price (shown in gray).</p>' + groups +
       (msg ? '<p class="' + (msg.err ? 'notice' : 'muted sm') + '" role="status">' + esc(msg.text) + '</p>' : '') +
       '<div class="row-wrap"><button class="btn-primary sm" data-act="q-save" data-id="' + esc(p.id) + '"' + (dirty ? '' : ' disabled') + '>Save services</button>' +
         (dirty ? '<button class="link sm" data-act="q-undo" data-id="' + esc(p.id) + '">Undo</button>' : '') + '</div>' +
@@ -328,10 +343,17 @@ window.BuffAPI.ready.then(function () {
   }
 
   function saveQuals(pid) {
-    var ids = qualDraft(pid);
+    var ids = qualDraft(pid), prices = {}, bad = null;
+    ids.forEach(function (id) {
+      var v = String(ownPrice(pid, id)).trim();
+      if (v === '') { return; }
+      var n = Math.round(parseFloat(v) * 100) / 100;
+      if (!(n >= 0 && n <= 10000)) { bad = v; } else { prices[id] = n; }
+    });
+    if (bad != null) { state.teamMsg['q:' + pid] = { err: true, text: '“' + bad + '” isn’t a price. Use a number, or leave it empty for the menu price.' }; render(); return; }
     state.teamMsg['q:' + pid] = { text: 'Saving…' }; render();
-    API.setQualifications(pid, ids).then(function () {
-      delete state.qdrafts[pid];
+    API.setQualifications(pid, ids, prices).then(function () {
+      delete state.qdrafts[pid]; delete state.pdrafts[pid];
       state.teamMsg['q:' + pid] = { text: 'Saved. Booking now follows this list.' };
       return loadTeam();
     }, function () { state.teamMsg['q:' + pid] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
@@ -1109,8 +1131,10 @@ window.BuffAPI.ready.then(function () {
         var who = CFG.providers.filter(function (p) { return API.canDo(p.id, [s.name]); });
         var dots = who.length
           ? '<span class="xp-dots">' + who.map(function (p) {
-              return '<a class="xp-dot" href="index.html?service=' + encodeURIComponent(s.name) + '&provider=' + encodeURIComponent(p.id) + '" title="' + esc(p.name) + '" aria-label="Book ' + esc(s.name) + ' with ' + esc(p.name) + '">' +
-                (p.photo ? '<img src="' + esc(p.photo) + '" alt="">' : esc(p.initials)) + '</a>';
+              var price = BuffPricing.priceFor(s.name, p.id), diff = price > s.price ? ' is-up' : price < s.price ? ' is-down' : '';
+              return '<a class="xp-pro" href="index.html?service=' + encodeURIComponent(s.name) + '&provider=' + encodeURIComponent(p.id) + '" title="' + esc(p.name) + '" aria-label="Book ' + esc(s.name) + ' with ' + esc(p.name) + ', ' + money(price) + '">' +
+                '<span class="xp-dot">' + (p.photo ? '<img src="' + esc(p.photo) + '" alt="">' : esc(p.initials)) + '</span>' +
+                '<span class="xp-price' + diff + '">' + money(price) + '</span></a>';
             }).join('') + '</span>'
           : '<span class="muted xs">No one yet</span>';
         return '<li class="sv-row' + (s.description ? ' has-desc' : '') + '"><span class="svc-main"><span class="svc-name">' + esc(s.name) + '</span><span class="muted sm">' + s.mins + ' min</span></span>' +
@@ -1121,7 +1145,7 @@ window.BuffAPI.ready.then(function () {
       return '<section class="sv-cat"><h2 class="label">' + esc(c) + '</h2><ul class="card list">' + rows + '</ul></section>';
     }).join('');
     return '<h1 class="h1">Experiment</h1>' +
-      '<p class="muted sm">The client Services page, with a circle for each provider who does each service. Tap a circle to start online booking with that service and provider, straight to the times.</p>' +
+      '<p class="muted sm">The client Services page, with a circle for each provider who does each service and their price for it (set on the Team tab; ▲ above or ▼ below the menu price). Tap a circle to start online booking with that service and provider, straight to the times.</p>' +
       '<div class="xp">' + sections + '</div>';
   }
 
@@ -1460,7 +1484,7 @@ window.BuffAPI.ready.then(function () {
     }
     else if (act === 'biz-undo') { var bk = el.getAttribute('data-k'); delete state.bizDraft[bk]; delete state.teamMsg['biz:' + bk]; render(); }
     else if (act === 'q-save') { saveQuals(el.getAttribute('data-id')); }
-    else if (act === 'q-undo') { var qid = el.getAttribute('data-id'); delete state.qdrafts[qid]; delete state.teamMsg['q:' + qid]; render(); }
+    else if (act === 'q-undo') { var qid = el.getAttribute('data-id'); delete state.qdrafts[qid]; delete state.pdrafts[qid]; delete state.teamMsg['q:' + qid]; render(); }
     else if (/^st-/.test(act)) { staffAction(act, el.getAttribute('data-k')); }
     else if (act === 'mn-pick') { state.menuCat = el.getAttribute('data-k'); render(); }
     else if (act === 'mn-save') { saveSvc(el.getAttribute('data-k')); }
@@ -1555,6 +1579,13 @@ window.BuffAPI.ready.then(function () {
       delete state.teamMsg['biz:' + bpart];
       if (e.type === 'change' && (t.type === 'checkbox' || t.tagName === 'SELECT')) { render(); }
       else { var card = t.closest('.card'); var sv = card && card.querySelector('[data-act="biz-save"]'); if (sv) { sv.disabled = false; } }
+      return;
+    }
+    var ppid = t.getAttribute && t.getAttribute('data-qprice');
+    if (ppid) {
+      (state.pdrafts[ppid] = state.pdrafts[ppid] || {})[t.getAttribute('data-sid')] = t.value;
+      state.qdrafts[ppid] = qualDraft(ppid); delete state.teamMsg['q:' + ppid];
+      var qs = document.querySelector('[data-act="q-save"][data-id="' + ppid + '"]'); if (qs) { qs.disabled = false; }
       return;
     }
     var qpid = t.getAttribute && t.getAttribute('data-qual');

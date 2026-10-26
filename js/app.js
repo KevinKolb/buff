@@ -43,14 +43,24 @@ window.BuffAPI.ready.then(function () {
   function svc(name) { return CFG.services.filter(function (s) { return s.name === name; })[0]; }
   // price with any specials for the chosen day and time (see pricing.js);
   // before a time is picked, only specials that don't depend on day or time count
-  function priceAt(dateISO, timeHHMM) {
-    return BuffPricing.visit(state.selected, timeHHMM ? dateISO : null, timeHHMM ? API.toMin(timeHHMM) : null);
+  // the provider each guest will have, where known: the time's providers, else the one picked for guest 1
+  function guestPros(slot) {
+    if (slot && slot.providerIds && slot.providerIds.length) { return slot.providerIds; }
+    var first = state.provider !== 'any' && state.provider !== 'gift' ? state.provider : null, out = [];
+    for (var i = 0; i < state.guests; i++) { out.push(i === 0 ? first : null); }
+    return out;
+  }
+  // all guests, with each provider's own prices
+  function priceAt(dateISO, timeHHMM, slot) {
+    return BuffPricing.group(state.selected, timeHHMM ? dateISO : null, timeHHMM ? API.toMin(timeHHMM) : null, guestPros(slot));
   }
   function totals() {
     var mins = 0;
     state.selected.forEach(function (n) { mins += svc(n).mins; });
-    var pr = isGift() ? regularPrice() : priceAt(state.date, state.slot && !state.waitlist ? state.slot.time : null);
-    return { mins: mins, price: pr.total * state.guests, regular: pr.subtotal * state.guests, perGuest: pr.total, pricing: pr };
+    if (isGift()) { var rp = regularPrice(); return { mins: mins, price: rp.total * state.guests, regular: rp.subtotal * state.guests, perGuest: rp.total, pricing: rp }; }
+    var live = state.slot && !state.waitlist ? state.slot : null;
+    var pr = priceAt(state.date, live ? live.time : null, live);
+    return { mins: mins, price: pr.total, regular: pr.subtotal, perGuest: pr.perGuest, pricing: pr };
   }
   function money(n) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
   function priceText(t) { return (t.regular > t.price ? '<s class="was">' + money(t.regular) + '</s> ' : '') + money(t.price); }
@@ -318,13 +328,18 @@ window.BuffAPI.ready.then(function () {
         '<span class="svc-main"><span class="svc-name">' + esc(pl.name) + '</span><span class="muted sm">' + esc(pl.address) + '</span></span>' +
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li>';
     }).join('') + '</ul>' : '';
+    // providers' own prices for these services, when any differ from the menu
+    var menuPrice = BuffPricing.visit(state.selected, null, null, null).subtotal;
+    var ownPrice = function (pid) { return BuffPricing.visit(state.selected, null, null, pid).subtotal; };
+    var showPrices = pros.some(function (p) { return ownPrice(p.id) !== menuPrice; });
     var rows = opts.map(function (p) {
       var on = state.provider === p.id;
+      var price = showPrices && p.id !== 'any' ? ' · ' + money(ownPrice(p.id)) + (state.guests > 1 ? ' each' : '') : '';
       var at = where && here == null && p.id !== 'any' ? PL.forProvider(p.id).map(function (id) { return (PL.byId(id) || {}).name; }).filter(Boolean).join(' · ') : '';
       var ig = p.instagram ? '<a class="pro-ig" href="https://www.instagram.com/' + encodeURIComponent(p.instagram) + '/" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on Instagram (@' + esc(p.instagram) + ')">' + IG_ICON + '</a>' : '';
       return '<li class="pro-li"><button class="pro' + (on ? ' is-on' : '') + (ig ? ' has-ig' : '') + '" data-act="pro" data-v="' + p.id + '" aria-pressed="' + on + '">' +
         (p.id === 'any' ? '<span class="avatar">' + icon('star') + '</span>' : avatar(p)) +
-        '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + '</span>' + (at ? '<span class="muted xs">At ' + esc(at) + '</span>' : '') + '</span>' +
+        '<span class="svc-main"><span class="svc-name">' + esc(p.name) + '</span><span class="muted sm">' + esc(p.blurb) + price + '</span>' + (at ? '<span class="muted xs">At ' + esc(at) + '</span>' : '') + '</span>' +
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button>' + ig + '</li>';
     }).join('');
     var hidden = CFG.providers.length - qualifiedPros().length;
@@ -377,10 +392,10 @@ window.BuffAPI.ready.then(function () {
         if (!inG.length) { return ''; }
         return '<h2 class="label">' + g[0] + '</h2><div class="times">' + inG.map(function (s) {
           var on = state.slot && state.slot.time === s.time;
-          var at = priceAt(state.date, s.time), deal = at.total < at.subtotal;
+          var at = priceAt(state.date, s.time, s), deal = at.total < at.subtotal;
           return '<button class="time' + (on ? ' is-on' : '') + (deal ? ' has-deal' : '') + '" data-act="slot" data-v="' + s.time + '" aria-pressed="' + on + '"' +
-            (deal ? ' aria-label="' + s.label + ', special price ' + money(at.total * state.guests) + '"' : '') + '>' + s.label +
-            (deal ? '<span class="time-price">' + money(at.total * state.guests) + '</span>' : '') + '</button>';
+            (deal ? ' aria-label="' + s.label + ', special price ' + money(at.total) + '"' : '') + '>' + s.label +
+            (deal ? '<span class="time-price">' + money(at.total) + '</span>' : '') + '</button>';
         }).join('') + '</div>';
       }).join('');
       if (!avail.length) { body = '<p class="muted center pad">No openings this day for ' + totals().mins + ' minutes.</p>'; }
