@@ -50,10 +50,10 @@ window.BUFF_CONFIG = {
 
   // v1: every provider performs every service at the menu price.
   providers: [
-    { id: 'p1', name: 'Provider 1', initials: 'P1', blurb: 'Hair · Makeup' },
-    { id: 'p2', name: 'Provider 2', initials: 'P2', blurb: 'Wax · Brows · Lashes' },
-    { id: 'p3', name: 'Provider 3', initials: 'P3', blurb: 'Nails' },
-    { id: 'p4', name: 'Provider 4', initials: 'P4', blurb: 'Spray tan · Jewelry' },
+    { id: 'p1', name: 'Provider 1', initials: 'P1', photo: 'assets/demo/provider-1.svg', blurb: 'Hair · Makeup' },
+    { id: 'p2', name: 'Provider 2', initials: 'P2', photo: 'assets/demo/provider-2.svg', blurb: 'Wax · Brows · Lashes' },
+    { id: 'p3', name: 'Provider 3', initials: 'P3', photo: 'assets/demo/provider-3.svg', blurb: 'Nails' },
+    { id: 'p4', name: 'Provider 4', initials: 'P4', photo: 'assets/demo/provider-4.svg', blurb: 'Spray tan · Jewelry' },
   ],
 
   // Prices from buffbeautybar.com/get-buff. Durations (mins) are estimates — TODO(Buff): confirm.
