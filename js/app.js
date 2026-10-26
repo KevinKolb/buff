@@ -7,6 +7,11 @@ window.BuffAPI.ready.then(function () {
 
   var CATS = [];
   CFG.services.forEach(function (s) { if (CATS.indexOf(s.cat) < 0) { CATS.push(s.cat); } });
+  var ORDER = CFG.categoryOrder || [];
+  function rank(c) { var i = ORDER.indexOf(c); return i < 0 ? ORDER.length : i; }
+  CATS = CATS.map(function (c, i) { return [c, i]; })
+    .sort(function (a, b) { return rank(a[0]) - rank(b[0]) || a[1] - b[1]; })
+    .map(function (x) { return x[0]; });
 
   var state = {
     step: 1,

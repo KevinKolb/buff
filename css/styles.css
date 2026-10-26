@@ -61,8 +61,7 @@ p { margin: 0; line-height: 1.5; }
 .round:disabled { opacity: .35; cursor: not-allowed; }
 
 /* Category chips */
-.chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; }
-.chips::-webkit-scrollbar { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 2px 6px; }
 .chip { flex-shrink: 0; min-height: 44px; padding: 0 18px; border-radius: 22px; border: 1.5px solid var(--border); background: var(--cream); color: var(--slate); font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
 .chip.is-on { background: var(--slate); border-color: var(--slate); color: #fff; }
 

@@ -21,6 +21,10 @@ window.BUFF_CONFIG = {
     cancellationWindowHours: 24,
   },
 
+  // Order of the category buttons on the booking page. Categories not listed
+  // here follow in menu order.
+  categoryOrder: ['Jewelry', 'Tanning', 'Hair', 'Wax', 'Nails', 'Face'],
+
   booking: {
     maxGuests: 3,          // group bookings in v1: up to 3 people
     slotStepMinutes: 15,   // start times offered every 15 minutes
