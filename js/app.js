@@ -410,11 +410,15 @@ window.BuffAPI.ready.then(function () {
   function showMap(pl) {
     if (!pl) { return; }
     var q = encodeURIComponent(pl.name + ', ' + pl.address);
-    mapDlg.innerHTML = '<h2 id="map-title" class="h1">' + esc(pl.name) + '</h2><p>' + esc(pl.address) + '</p>' +
+    var warn = '<p class="notice map-warn" role="note"><b>You’re not booked yet.</b> ' +
+      (hasHold() ? 'We’re holding ' + esc(holdWhen()) + ' for you until ' + esc(clock(state.hold.expiresAt)) + '. ' : '') +
+      'Come back to this page and tap Continue, then Book now, to finish.</p>';
+    mapDlg.innerHTML = '<h2 id="map-title" class="h1">' + esc(pl.name) + '</h2><p>' + esc(pl.address) + '</p>' + warn +
       '<iframe class="map-frame" title="Map of ' + esc(pl.name) + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps?q=' + q + '&output=embed"></iframe>' +
       '<div class="hold-actions">' +
         '<a class="btn-outline as-link" href="https://www.google.com/maps/dir/?api=1&destination=' + q + '" target="_blank" rel="noopener">Directions in Google Maps</a>' +
         '<a class="btn-outline as-link" href="https://maps.apple.com/?daddr=' + encodeURIComponent(pl.address) + '&q=' + encodeURIComponent(pl.name) + '" target="_blank" rel="noopener">Directions in Apple Maps</a>' +
+        '<p class="muted xs center">Directions open in a new tab or your maps app. This booking page stays open: switch back to it to finish.</p>' +
         '<button class="btn-primary" data-act="map-close">Back to booking</button></div>';
     mapDlg.showModal();
   }
