@@ -77,11 +77,14 @@
     CFG.providers = r[2].map(function (p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb }; });
     CFG.services = r[3].map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } return o; });
   });
-  ready.catch(function () {
+  ready.catch(function (err) {
+    console.error('[Buff] could not load from Supabase', err);
     var main = document.querySelector('main');
     if (main) {
       main.innerHTML = '<p class="notice" role="alert">We couldn’t load the booking page. Check your connection and refresh, or call us at ' +
-        '<a href="' + CFG.business.phoneHref + '">' + CFG.business.phone + '</a>.</p>';
+        '<a href="' + CFG.business.phoneHref + '">' + CFG.business.phone + '</a>.</p>' +
+        // technical detail for whoever is fixing it; harmless for clients
+        '<p class="muted xs center">' + String((err && (err.message || err.code)) || err).replace(/[&<>]/g, '') + '</p>';
     }
   });
 

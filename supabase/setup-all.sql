@@ -412,3 +412,17 @@ insert into public.services (cat, name, price, mins, price_note, sort) values
   ('Jewelry', 'Permanent Bracelet', 75, 30, null, 44),
   ('Jewelry', 'Permanent Anklet', 90, 30, null, 45),
   ('Jewelry', 'Permanent Necklace', 165, 45, null, 46);
+
+-- Explicit table permissions. Older Supabase projects granted these by
+-- default; newer ones don't. Row-level security still decides which rows
+-- each person can touch. These only let the request reach the table.
+
+grant usage on schema public to anon, authenticated;
+
+-- Anyone: read the menu, hours, providers and booking settings.
+grant select on public.settings, public.business_hours, public.providers, public.services to anon, authenticated;
+
+-- Signed-in users: everything else goes through the RLS policies
+-- (staff only; managers for edits and time-off decisions).
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
