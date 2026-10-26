@@ -8,8 +8,8 @@ window.BUFF_CONFIG = {
   // When these are set, hours, providers, services and booking settings come
   // from the database, and the values further down this file are ignored.
   backend: {
-    supabaseUrl: '',
-    supabaseKey: '',
+    supabaseUrl: 'https://iufxhcpepyeiwjcyfbtr.supabase.co',
+    supabaseKey: 'sb_publishable_Fl3KS93zeOiIiRp9_rXBig_xaF5Wh0x',
   },
 
   business: {

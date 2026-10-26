@@ -52,7 +52,7 @@ There's no login yet, so don't share the link widely.
 
 ## Status and next steps
 
-- **Mock data.** Each provider's day is pre-filled with sample appointments (gray on the front desk). Real bookings, the waitlist and time off are saved in the browser's `localStorage`. That means the client pages and the front desk share data only on the same device. Use **Reset demo data** on the front desk to clear it. To go live, replace the functions in `js/api.js` with calls to a real backend. The pages won't need any changes.
+- **Live database.** The site is connected to Supabase (`backend` in `js/config.js`). Menu, hours and providers now come from the database: edit them in Supabase's table editor, not in `config.js`. Setup steps are in `supabase/SETUP.md`. Clearing the two `backend` values switches back to demo mode (sample data, saved only in the browser).
 - **To confirm with Buff** (marked `TODO(Buff)` in `config.js`):
   - opening hours
   - how long each service takes (current values are estimates)

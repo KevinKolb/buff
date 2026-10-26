@@ -54,6 +54,10 @@
     });
   }
 
+  // Pages render once `ready` resolves; until then, say so.
+  var main = document.querySelector('main');
+  if (main && !main.innerHTML.trim()) { main.innerHTML = '<p class="muted center pad" role="status">Loading…</p>'; }
+
   // Menu, hours, providers and settings from the database.
   var ready = Promise.all([
     sb.from('settings').select('*').eq('id', 1).single().then(unwrap),
