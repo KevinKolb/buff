@@ -45,7 +45,7 @@ window.BuffAPI.ready.then(function () {
   // ---------- helpers ----------
   function $(sel) { return document.querySelector(sel); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function money(n) { return '$' + n.toLocaleString('en-US'); }
+  function money(n) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
   function isoDate(d) { var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day; }
   function fromISO(iso) { return new Date(iso + 'T00:00:00'); }
   function addDays(iso, n) { var d = fromISO(iso); d.setDate(d.getDate() + n); return isoDate(d); }
@@ -54,10 +54,14 @@ window.BuffAPI.ready.then(function () {
   function providerName(id) { if (id === 'any') { return 'First available'; } var p = CFG.providers.filter(function (x) { return x.id === id; })[0]; return p ? p.name : id; }
   function hoursOn(iso) { var h = CFG.hours[fromISO(iso).getDay()]; return h ? { open: API.toMin(h.open), close: API.toMin(h.close) } : null; }
   function fmt(m) { return API.formatTime(m); }
+  function priceAt(timeHHMM) { // with specials for this day and time (see pricing.js)
+    return BuffPricing.visit(state.selected, timeHHMM ? state.date : null, timeHHMM ? API.toMin(timeHHMM) : null);
+  }
   function totals() {
-    var mins = 0, price = 0;
-    state.selected.forEach(function (n) { var s = svc(n); if (s) { mins += s.mins; price += s.price; } });
-    return { mins: mins, price: price * state.guests };
+    var mins = 0;
+    state.selected.forEach(function (n) { var s = svc(n); if (s) { mins += s.mins; } });
+    var pr = priceAt(state.slot ? state.slot.time : null);
+    return { mins: mins, price: pr.total * state.guests, regular: pr.subtotal * state.guests, pricing: pr };
   }
   function clockAt(ms) { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
   function hasRole(r) { return !!(state.staff && state.staff.roles && state.staff.roles.indexOf(r) >= 0); }
@@ -105,6 +109,7 @@ window.BuffAPI.ready.then(function () {
       var on = state.selected.indexOf(s.name) >= 0;
       return '<li><button class="svc' + (on ? ' is-on' : '') + '" data-act="svc" data-v="' + esc(s.name) + '" aria-pressed="' + on + '">' +
         '<span class="svc-main"><span class="svc-name">' + esc(s.name) + '</span><span class="muted sm">' + s.mins + ' min</span></span>' +
+        (BuffPricing.hasSpecial(s.name) ? '<span class="sp-tag">Special</span>' : '') +
         '<span class="svc-price">' + money(s.price) + (s.priceNote || '') + '</span>' +
         '<span class="tick">' + (on ? '✓' : '+') + '</span></button></li>';
     }).join('');
@@ -139,7 +144,9 @@ window.BuffAPI.ready.then(function () {
       body = open.length
         ? '<div class="times">' + open.map(function (s) {
             var on = state.slot && state.slot.time === s.time;
-            return '<button class="time' + (on ? ' is-on' : '') + '" data-act="slot" data-v="' + s.time + '" aria-pressed="' + on + '">' + s.label + '</button>';
+            var at = priceAt(s.time), deal = at.total < at.subtotal;
+            return '<button class="time' + (on ? ' is-on' : '') + (deal ? ' has-deal' : '') + '" data-act="slot" data-v="' + s.time + '" aria-pressed="' + on + '">' + s.label +
+              (deal ? '<span class="time-price">' + money(at.total * state.guests) + '</span>' : '') + '</button>';
           }).join('') + '</div>'
         : '<p class="muted sm">No openings this day for ' + totals().mins + ' minutes' + (state.guests > 1 ? ' and ' + state.guests + ' guests' : '') + '. Try another day or provider.</p>';
     }
@@ -243,7 +250,8 @@ window.BuffAPI.ready.then(function () {
       ? '<div class="card summary bk-summary"><div class="label">Booking</div>' +
           '<div class="b lg">' + esc(longDate(state.date)) + ' at ' + esc(state.slot.label) + '</div>' +
           '<div>' + esc(state.selected.join(' + ')) + '</div>' +
-          '<div class="muted sm">' + esc(state.slot.providerIds.map(providerName).join(', ')) + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + ' · ' + money(t.price) + '</div></div>'
+          '<div class="muted sm">' + esc(state.slot.providerIds.map(providerName).join(', ')) + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + ' · ' + (t.regular > t.price ? '<s class="was">' + money(t.regular) + '</s> ' : '') + money(t.price) + '</div>' +
+          (t.pricing.note ? '<div class="sp-applied">Special: ' + esc(t.pricing.note) + '</div>' : '') + '</div>'
       : '<p class="muted sm">Pick a time above.</p>';
     var policyErr = state.errors.policy;
     return '<div class="card form bk-client"><div class="b">3. Client</div>' + viewPicker() +

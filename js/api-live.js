@@ -33,7 +33,7 @@
     return {
       id: r.id, date: r.date, start: r.start_min, time: hhmm(r.start_min), mins: r.mins,
       provider: r.provider_pref, providerIds: r.provider_ids, services: r.services, guests: r.guests,
-      total: +r.total, status: r.status, cancelledBy: r.cancelled_by, createdAt: r.created_at, bookedBy: r.booked_by, clientId: r.client_id, sample: !!r.is_sample, occasion: r.occasion || '',
+      total: +r.total, status: r.status, cancelledBy: r.cancelled_by, createdAt: r.created_at, bookedBy: r.booked_by, clientId: r.client_id, sample: !!r.is_sample, occasion: r.occasion || '', discountNote: r.discount_note || '',
       client: { name: r.client_name, phone: r.client_phone, email: r.client_email, note: r.note },
     };
   }
@@ -48,12 +48,12 @@
   }
 
   function fromServiceRow(v) {
-    return { id: v.id, cat: v.cat, name: v.name, price: +v.price, mins: v.mins, priceNote: v.price_note || '', sort: v.sort, active: v.active };
+    return { id: v.id, cat: v.cat, name: v.name, price: +v.price, mins: v.mins, priceNote: v.price_note || '', description: v.description || '', sort: v.sort, active: v.active };
   }
   // keep this page's copy of the menu (CFG.services) in step after an edit
   function refreshMenu() {
     return sb.from('services').select('*').eq('active', true).order('sort').then(unwrap).then(function (rows) {
-      CFG.services = rows.map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } return o; });
+      CFG.services = rows.map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } if (v.description) { o.description = v.description; } return o; });
     });
   }
   // unwrap, but turn a unique-name clash into a readable message
@@ -87,6 +87,8 @@
     sb.from('provider_services').select('provider_id,service_id').then(function (res) { return res.error ? null : res.data; }),
     // closed days from today on; empty if that table isn't set up yet
     sb.from('closed_dates').select('date,label').gte('date', isoToday()).then(function (res) { return res.error ? [] : res.data; }),
+    // current specials; empty if that table isn't set up yet
+    sb.from('specials').select('*').then(function (res) { return res.error ? [] : res.data; }),
   ]).then(function (r) {
     var s = r[0];
     CFG.booking.slotStepMinutes = s.slot_step_min;
@@ -100,10 +102,12 @@
     r[1].forEach(function (h) { hours[h.dow] = { open: h.open_time.slice(0, 5), close: h.close_time.slice(0, 5) }; });
     CFG.hours = hours;
     CFG.providers = r[2].map(function (p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb }; });
-    CFG.services = r[3].map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } return o; });
+    CFG.services = r[3].map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } if (v.description) { o.description = v.description; } return o; });
     CFG.qualified = qualifiedFrom(r[4], r[3]);
     CFG.closedDates = {};
     r[5].forEach(function (c) { CFG.closedDates[c.date] = c.label || ''; });
+    serviceNames = {}; r[3].forEach(function (v) { serviceNames[v.id] = v.name; });
+    CFG.specials = r[6].map(fromSpecialRow);
   });
 
   // business details from settings (older databases don't have them: keep config.js values)
@@ -116,6 +120,19 @@
     CFG.business.address = s.address;
     CFG.business.cancellationPolicyUrl = s.cancellation_policy_url;
     CFG.business.cancellationWindowHours = s.cancellation_window_hours;
+  }
+
+  // specials: the database stores service ids; the pages work with names
+  var serviceNames = {};
+  function fromSpecialRow(x) {
+    return {
+      id: x.id, name: x.name, description: x.description || '', kind: x.kind,
+      services: (x.service_ids || []).map(function (id) { return serviceNames[id]; }).filter(Boolean),
+      serviceIds: x.service_ids || [],
+      discountType: x.discount_type, discountValue: +x.discount_value, days: x.days || [],
+      startTime: x.start_time ? x.start_time.slice(0, 5) : null, endTime: x.end_time ? x.end_time.slice(0, 5) : null,
+      startDate: x.start_date, endDate: x.end_date, minServices: x.min_services, active: x.active,
+    };
   }
 
   function qualifiedFrom(rows, services) {
@@ -381,6 +398,41 @@
       }).eq('id', 1).then(unwrap).then(function () { Object.assign(CFG.booking, r); return true; });
     },
 
+    // ======== specials (managers) ========
+
+    listSpecials: function () {
+      return Promise.all([
+        sb.from('services').select('id,name').then(unwrap),
+        sb.from('specials').select('*').order('created_at', { ascending: false }).then(unwrap),
+      ]).then(function (r) {
+        r[0].forEach(function (v) { serviceNames[v.id] = v.name; });
+        return r[1].map(fromSpecialRow);
+      });
+    },
+    saveSpecial: function (sp, isNew) {
+      return sb.from('services').select('id,name').then(unwrap).then(function (svcs) {
+        var ids = {}; svcs.forEach(function (v) { ids[v.name] = v.id; serviceNames[v.id] = v.name; });
+        var row = {
+          name: sp.name, description: sp.description || '', kind: sp.kind,
+          service_ids: (sp.services || []).map(function (n) { return ids[n]; }).filter(Boolean),
+          discount_type: sp.discountType, discount_value: sp.discountValue, days: sp.days || [],
+          start_time: sp.startTime || null, end_time: sp.endTime || null, start_date: sp.startDate || null, end_date: sp.endDate || null,
+          min_services: sp.minServices || 2, active: sp.active !== false,
+        };
+        var q = isNew ? sb.from('specials').insert(row) : sb.from('specials').update(row).eq('id', sp.id);
+        return q.select().single().then(unwrap);
+      }).then(function (x) {
+        var saved = fromSpecialRow(x);
+        CFG.specials = (CFG.specials || []).filter(function (o) { return o.id !== saved.id; }).concat(saved.active ? [saved] : []);
+        return saved;
+      });
+    },
+    deleteSpecial: function (id) {
+      return sb.from('specials').delete().eq('id', id).then(unwrap).then(function () {
+        CFG.specials = (CFG.specials || []).filter(function (o) { return o.id !== id; }); return true;
+      });
+    },
+
     // ======== closed days (managers) ========
 
     listClosedDates: function () {
@@ -449,7 +501,7 @@
     },
 
     saveService: function (s, isNew) {
-      var row = { cat: s.cat, name: s.name, price: s.price, mins: s.mins, price_note: s.priceNote || null, sort: s.sort, active: s.active };
+      var row = { cat: s.cat, name: s.name, price: s.price, mins: s.mins, price_note: s.priceNote || null, description: s.description || null, sort: s.sort, active: s.active };
       var q = isNew ? sb.from('services').insert(row) : sb.from('services').update(row).eq('id', s.id);
       return q.select().single().then(unwrapDupe).then(function (r) { return refreshMenu().then(function () { return fromServiceRow(r); }); });
     },

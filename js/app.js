@@ -39,12 +39,19 @@ window.BuffAPI.ready.then(function () {
   function $(sel) { return document.querySelector(sel); }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function svc(name) { return CFG.services.filter(function (s) { return s.name === name; })[0]; }
-  function totals() {
-    var mins = 0, price = 0;
-    state.selected.forEach(function (n) { var s = svc(n); mins += s.mins; price += s.price; });
-    return { mins: mins, price: price * state.guests, perGuest: price };
+  // price with any specials for the chosen day and time (see pricing.js);
+  // before a time is picked, only specials that don't depend on day or time count
+  function priceAt(dateISO, timeHHMM) {
+    return BuffPricing.visit(state.selected, timeHHMM ? dateISO : null, timeHHMM ? API.toMin(timeHHMM) : null);
   }
-  function money(n) { return '$' + n.toLocaleString('en-US'); }
+  function totals() {
+    var mins = 0;
+    state.selected.forEach(function (n) { mins += svc(n).mins; });
+    var pr = priceAt(state.date, state.slot && !state.waitlist ? state.slot.time : null);
+    return { mins: mins, price: pr.total * state.guests, regular: pr.subtotal * state.guests, perGuest: pr.total, pricing: pr };
+  }
+  function money(n) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
+  function priceText(t) { return (t.regular > t.price ? '<s class="was">' + money(t.regular) + '</s> ' : '') + money(t.price); }
   function isoDate(d) { var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day; }
   function fromISO(iso) { return new Date(iso + 'T00:00:00'); }
   function longDate(iso) { return fromISO(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
@@ -224,6 +231,7 @@ window.BuffAPI.ready.then(function () {
       var on = state.selected.indexOf(s.name) >= 0;
       return '<li><button class="svc' + (on ? ' is-on' : '') + '" data-act="svc" data-v="' + esc(s.name) + '" aria-pressed="' + on + '">' +
         '<span class="svc-main"><span class="svc-name">' + esc(s.name) + '</span><span class="muted sm">' + s.mins + ' min</span></span>' +
+        (BuffPricing.hasSpecial(s.name) ? '<span class="sp-tag">Special</span>' : '') +
         '<span class="svc-price">' + money(s.price) + (s.priceNote || '') + '</span>' +
         '<span class="tick">' + icon(on ? 'check' : 'plus') + '</span></button></li>';
     }).join('');
@@ -313,7 +321,10 @@ window.BuffAPI.ready.then(function () {
         if (!inG.length) { return ''; }
         return '<h2 class="label">' + g[0] + '</h2><div class="times">' + inG.map(function (s) {
           var on = state.slot && state.slot.time === s.time;
-          return '<button class="time' + (on ? ' is-on' : '') + '" data-act="slot" data-v="' + s.time + '" aria-pressed="' + on + '">' + s.label + '</button>';
+          var at = priceAt(state.date, s.time), deal = at.total < at.subtotal;
+          return '<button class="time' + (on ? ' is-on' : '') + (deal ? ' has-deal' : '') + '" data-act="slot" data-v="' + s.time + '" aria-pressed="' + on + '"' +
+            (deal ? ' aria-label="' + s.label + ', special price ' + money(at.total * state.guests) + '"' : '') + '>' + s.label +
+            (deal ? '<span class="time-price">' + money(at.total * state.guests) + '</span>' : '') + '</button>';
         }).join('') + '</div>';
       }).join('');
       if (!avail.length) { body = '<p class="muted center pad">No openings this day for ' + totals().mins + ' minutes.</p>'; }
@@ -344,7 +355,8 @@ window.BuffAPI.ready.then(function () {
     return '<div class="card summary"><div class="label">Your visit</div>' +
       '<div class="b lg">' + esc(when) + '</div>' +
       '<div>' + esc(state.selected.join(' + ')) + '</div>' +
-      '<div class="muted sm">' + esc(providerName(state.provider)) + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + ' · ' + money(t.price) + '</div></div>';
+      '<div class="muted sm">' + esc(providerName(state.provider)) + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + ' · ' + priceText(t) + '</div>' +
+      (t.pricing.note ? '<div class="sp-applied">Special: ' + esc(t.pricing.note) + '</div>' : '') + '</div>';
   }
 
   var changeLink = '<button class="link sm change-link" data-act="change-time">Change date or time</button>';
@@ -402,10 +414,11 @@ window.BuffAPI.ready.then(function () {
   // the visit so far, for the summary panel beside the steps on wide screens (hidden on phones)
   function footDetail() {
     if (!state.selected.length) { return '<div class="label">Your visit</div><p class="muted sm">Pick a service to start.</p>'; }
-    var rows = state.selected.map(function (n) {
-      var v = svc(n);
-      return '<li class="row-between"><span>' + esc(n) + '</span><span class="muted">' + money(v.price) + (v.priceNote || '') + '</span></li>';
-    }).join('');
+    var t = totals();
+    var rows = t.pricing.lines.map(function (l) {
+      return '<li class="row-between"><span>' + esc(l.name) + (l.special ? '<span class="muted xs"> · ' + esc(l.special) + '</span>' : '') + '</span>' +
+        '<span class="muted">' + (l.price < l.regular ? '<s class="was">' + money(l.regular) + '</s> ' : '') + money(l.price) + (svc(l.name).priceNote || '') + '</span></li>';
+    }).join('') + (t.pricing.quantity ? '<li class="row-between"><span>' + esc(t.pricing.quantity.name) + '</span><span class="muted">−' + money(t.pricing.quantity.amount) + '</span></li>' : '');
     var when = state.waitlist ? longDate(state.date) + ' · waitlist' : state.slot ? longDate(state.date) + ' at ' + state.slot.label : '';
     return '<div class="label">Your visit</div><ul class="foot-list">' + rows + '</ul>' +
       '<p class="sm">' + esc(providerName(state.provider)) + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + '</p>' +
@@ -438,7 +451,7 @@ window.BuffAPI.ready.then(function () {
       $('#foot-sub').textContent = state.selected.length
         ? state.selected.length + ' service' + (state.selected.length === 1 ? '' : 's') + ' · ' + t.mins + ' min' + (state.guests > 1 ? ' · ×' + state.guests : '')
         : 'Choose a service';
-      $('#foot-total').textContent = money(t.price);
+      $('#foot-total').innerHTML = priceText(t);
       $('#foot-detail').innerHTML = footDetail();
       var btn = $('#next');
       btn.disabled = !canContinue();

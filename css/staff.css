@@ -195,3 +195,16 @@
 .s-hold { position: absolute; left: 4px; right: 4px; border-radius: 8px; border: 2px dashed #C08A5B; background: #FFF4EA; color: #7A4A20; padding: 2px 8px; font-size: 11px; text-align: left; display: flex; flex-direction: column; overflow: hidden; cursor: pointer; z-index: 1; font-family: inherit; }
 .s-occ { display: inline-block; background: #F5D3BE; color: #6B3A1F; border-radius: 6px; padding: 0 5px; font-weight: 600; font-size: 10px; }
 .s-occ-line { background: #FFF1E6; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+
+/* Specials tab */
+.s-sp-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.s-sp-main { flex: 1 1 220px; min-width: 0; }
+.s-sp-row .pill { vertical-align: middle; font-size: 10px; margin-left: 4px; }
+.s-sp-onnow { background: #2F6B3B; color: #fff; }
+.s-sp-comingup { background: #C08A5B; color: #fff; }
+.s-sp-off, .s-sp-ended { background: #ddd; color: #555; }
+.s-sp-svcs { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-top: 6px; }
+.s-sp-cat { border: 1px solid var(--line, #e5e0da); border-radius: 10px; padding: 6px 10px; margin: 0; min-width: 0; }
+.s-sp-days { gap: 4px 14px; }
+.s-sp-note { color: #6B3A1F; font-weight: 600; }
+.flabel { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }

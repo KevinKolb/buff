@@ -21,7 +21,7 @@ window.BuffAPI.ready.then(function () {
 
   function $(sel) { return document.querySelector(sel); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function money(n) { return '$' + n.toLocaleString('en-US'); }
+  function money(n) { return '$' + (Math.round(n * 100) % 100 ? n.toFixed(2) : Math.round(n).toLocaleString('en-US')); }
   function longDate(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
   function shortDate(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
   function providerName(id) { if (id === 'any') { return 'First available'; } var p = CFG.providers.filter(function (x) { return x.id === id; })[0]; return p ? p.name : ''; }

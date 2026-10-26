@@ -48,6 +48,7 @@
     if (db.hours) { CFG.hours = db.hours; }
     if (db.rules) { Object.assign(CFG.booking, db.rules); }
     CFG.closedDates = db.closed || {};                                       // holidays: { 'YYYY-MM-DD': label }
+    CFG.specials = db.specials || [];                                        // Specials tab (see pricing.js)
   }
   sync();
   function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* keep working in memory */ } }
@@ -220,6 +221,10 @@
       rec.clientId = clientFor(payload, payload._staff);
       delete rec._staff; delete rec.client.staffNote;
       delete rec.holdToken;
+      if (window.BuffPricing) { // the price is decided here, like the database does
+        var pr = window.BuffPricing.visit(rec.services, rec.date, start);
+        rec.total = pr.total * (rec.guests || 1); rec.discountNote = pr.note;
+      }
       db.holds = (db.holds || []).filter(function (x) { return x.token !== payload.holdToken; }); // the hold became a booking
       db.bookings.push(rec); save();
       return delay(rec);
@@ -394,6 +399,23 @@
     saveHours: function (hours) { sync(); db.hours = clone(hours); CFG.hours = db.hours; save(); return delay(true); },
     saveRules: function (r) { sync(); db.rules = clone(r); Object.assign(CFG.booking, db.rules); save(); return delay(true); },
 
+    // ======== specials (managers) ========
+
+    /** Every special, including switched-off ones, newest first. */
+    listSpecials: function () { sync(); return delay((db.specials || []).slice().reverse()); },
+    saveSpecial: function (sp, isNew) {
+      sync();
+      var list = db.specials || [];
+      if (isNew) { sp.id = list.reduce(function (m, x) { return Math.max(m, x.id); }, 0) + 1; list.push(sp); }
+      else { list = list.map(function (x) { return x.id === sp.id ? sp : x; }); }
+      db.specials = list; CFG.specials = list; save();
+      return delay(sp);
+    },
+    deleteSpecial: function (id) {
+      sync(); db.specials = (db.specials || []).filter(function (x) { return x.id !== id; }); CFG.specials = db.specials; save();
+      return delay(true);
+    },
+
     // ======== closed days (managers) ========
 
     /** [{ date: 'YYYY-MM-DD', label }] from today on, soonest first. */
@@ -550,7 +572,7 @@
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; delete db.clientSession; save();
-      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules || db.closed) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; delete db.closed; save(); location.reload(); }
+      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules || db.closed || db.specials) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; delete db.closed; delete db.specials; save(); location.reload(); }
       return delay(true);
     },
   };

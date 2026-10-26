@@ -8,7 +8,7 @@ window.BuffAPI.ready.then(function () {
 
   function $(sel) { return document.querySelector(sel); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function money(n) { return '$' + n.toLocaleString('en-US'); }
+  function money(n) { return '$' + (Math.round(n * 100) % 100 ? n.toFixed(2) : Math.round(n).toLocaleString('en-US')); }
   function bookable(s) { return CFG.providers.some(function (p) { return API.canDo(p.id, [s.name]); }); }
 
   var cats = [];
@@ -25,8 +25,10 @@ window.BuffAPI.ready.then(function () {
       var action = bookable(s)
         ? '<a class="tick sv-add" href="index.html?service=' + encodeURIComponent(s.name) + '" aria-label="Book ' + esc(s.name) + '">' + plus + '</a>'
         : '<a class="sv-call" href="' + CFG.business.phoneHref + '">Call to book</a>';
-      return '<li class="sv-row"><span class="svc-main"><span class="svc-name">' + esc(s.name) + '</span><span class="muted sm">' + s.mins + ' min</span></span>' +
-        '<span class="svc-price">' + money(s.price) + (s.priceNote || '') + '</span>' + action + '</li>';
+      return '<li class="sv-row' + (s.description ? ' has-desc' : '') + '"><span class="svc-main"><span class="svc-name">' + esc(s.name) + '</span><span class="muted sm">' + s.mins + ' min</span></span>' +
+        (window.BuffPricing && BuffPricing.hasSpecial(s.name) ? '<a class="sp-tag" href="specials.html">Special</a>' : '') +
+        '<span class="svc-price">' + money(s.price) + (s.priceNote || '') + '</span>' + action +
+        (s.description ? '<p class="sv-desc">' + esc(s.description) + '</p>' : '') + '</li>';
     }).join('');
     return '<section class="sv-cat"><h2 class="label">' + esc(c) + '</h2><ul class="card list">' + rows + '</ul></section>';
   }).join('');
