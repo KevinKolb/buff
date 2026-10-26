@@ -43,6 +43,9 @@
     if (db.services) { CFG.services = db.services.filter(function (s) { return s.active; }); }    // edited on the Menu tab
     if (db.categoryOrder) { CFG.categoryOrder = db.categoryOrder; }
     CFG.qualified = qualifiedNames();                                       // who does which services (Team tab)
+    if (db.business) { Object.assign(CFG.business, db.business); }          // Business tab
+    if (db.hours) { CFG.hours = db.hours; }
+    if (db.rules) { Object.assign(CFG.booking, db.rules); }
   }
   sync();
   function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* keep working in memory */ } }
@@ -330,6 +333,25 @@
       return delay(p);
     },
 
+    // ======== business details, hours, booking rules (managers) ========
+
+    /** { business: { name, phone, address, cancellationPolicyUrl, cancellationWindowHours }, hours: { 0..6: {open, close} | null }, rules: { slotStepMinutes, daysAhead, minNoticeMinutes, maxGuests } } */
+    getSettings: function () {
+      sync();
+      return delay({
+        business: { name: CFG.business.name, phone: CFG.business.phone, address: CFG.business.address,
+          cancellationPolicyUrl: CFG.business.cancellationPolicyUrl, cancellationWindowHours: CFG.business.cancellationWindowHours },
+        hours: CFG.hours,
+        rules: { slotStepMinutes: CFG.booking.slotStepMinutes, daysAhead: CFG.booking.daysAhead, minNoticeMinutes: CFG.booking.minNoticeMinutes, maxGuests: CFG.booking.maxGuests },
+      });
+    },
+    saveBusiness: function (b) {
+      sync(); db.business = Object.assign({}, b, { phoneHref: phoneHref(b.phone) }); Object.assign(CFG.business, db.business); save();
+      return delay(true);
+    },
+    saveHours: function (hours) { sync(); db.hours = clone(hours); CFG.hours = db.hours; save(); return delay(true); },
+    saveRules: function (r) { sync(); db.rules = clone(r); Object.assign(CFG.booking, db.rules); save(); return delay(true); },
+
     // ======== who does which services (managers) ========
 
     /** { providerId: [serviceId, ...] } for every provider. */
@@ -468,7 +490,7 @@
     resetDemo: function () {
       sync();
       db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; delete db.clientSession; save();
-      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; save(); location.reload(); }
+      if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; save(); location.reload(); }
       return delay(true);
     },
   };
@@ -518,6 +540,8 @@
     var mine = CFG.qualified[providerId] || [];
     return services.every(function (n) { return mine.indexOf(n) >= 0; });
   }
+
+  function phoneHref(phone) { return 'tel:' + String(phone || '').replace(/[^\d+]/g, ''); }
 
   function demoStaff() {
     var as = new URLSearchParams(location.search).get('as');

@@ -16,7 +16,7 @@ window.BUFF_CONFIG = {
     name: 'Buff Beauty Bar',
     phone: '504-522-2833',
     phoneHref: 'tel:5045222833',
-    address: 'Carondelet St, New Orleans, LA', // TODO: confirm 20 vs 720 Carondelet
+    address: '720 Carondelet St, New Orleans, LA 70130',
     cancellationPolicyUrl: 'https://buffbeautybar.com/cancellation-policy',
     cancellationWindowHours: 24,
   },

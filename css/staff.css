@@ -178,3 +178,10 @@
 .s-qlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0 12px; padding-left: 30px; }
 .s-qlist .agree, .s-qcat legend .agree { padding: 3px 0; align-items: center; font-size: 13px; }
 .s-warn { color: var(--err); font-weight: 600; }
+/* Business tab */
+.bz-days { display: flex; flex-direction: column; }
+.bz-day { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-height: 56px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
+.bz-day:last-child { border-bottom: none; }
+.bz-on { padding: 0; align-items: center; min-width: 130px; }
+.bz-times { display: flex; align-items: center; gap: 8px; }
+.bz-times input { height: 44px; border-radius: 10px; border: 1px solid var(--border); padding: 0 8px; font-size: 16px; font-family: inherit; background: #fff; color: var(--ink); width: 140px; }

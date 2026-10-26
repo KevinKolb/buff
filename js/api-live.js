@@ -91,6 +91,7 @@
     CFG.booking.minNoticeMinutes = s.min_notice_min;
     CFG.booking.maxGuests = s.max_guests;
     if (s.category_order && s.category_order.length) { CFG.categoryOrder = s.category_order; }
+    applyBusiness(s);
     var hours = {};
     for (var d = 0; d < 7; d++) { hours[d] = null; }
     r[1].forEach(function (h) { hours[h.dow] = { open: h.open_time.slice(0, 5), close: h.close_time.slice(0, 5) }; });
@@ -99,6 +100,17 @@
     CFG.services = r[3].map(function (v) { var o = { cat: v.cat, name: v.name, price: +v.price, mins: v.mins }; if (v.price_note) { o.priceNote = v.price_note; } return o; });
     CFG.qualified = qualifiedFrom(r[4], r[3]);
   });
+
+  // business details from settings (older databases don't have them: keep config.js values)
+  function applyBusiness(s) {
+    if (s.address == null) { return; }
+    CFG.business.name = s.business_name;
+    CFG.business.phone = s.phone;
+    CFG.business.phoneHref = 'tel:' + String(s.phone || '').replace(/[^\d+]/g, '');
+    CFG.business.address = s.address;
+    CFG.business.cancellationPolicyUrl = s.cancellation_policy_url;
+    CFG.business.cancellationWindowHours = s.cancellation_window_hours;
+  }
 
   function qualifiedFrom(rows, services) {
     if (!rows) { return null; }
@@ -291,6 +303,51 @@
         CFG.providers = rows.map(function (x) { return { id: x.id, name: x.name, initials: x.initials, blurb: x.blurb }; });
         return p;
       });
+    },
+
+    // ======== business details, hours, booking rules (managers) ========
+
+    getSettings: function () {
+      return Promise.all([
+        sb.from('settings').select('*').eq('id', 1).single().then(unwrap),
+        sb.from('business_hours').select('*').then(unwrap),
+      ]).then(function (r) {
+        var s = r[0], hours = {};
+        for (var d = 0; d < 7; d++) { hours[d] = null; }
+        r[1].forEach(function (h) { hours[h.dow] = { open: h.open_time.slice(0, 5), close: h.close_time.slice(0, 5) }; });
+        return {
+          hasBusiness: s.address != null,
+          business: s.address != null
+            ? { name: s.business_name, phone: s.phone, address: s.address, cancellationPolicyUrl: s.cancellation_policy_url, cancellationWindowHours: s.cancellation_window_hours }
+            : { name: CFG.business.name, phone: CFG.business.phone, address: CFG.business.address, cancellationPolicyUrl: CFG.business.cancellationPolicyUrl, cancellationWindowHours: CFG.business.cancellationWindowHours },
+          hours: hours,
+          rules: { slotStepMinutes: s.slot_step_min, daysAhead: s.days_ahead, minNoticeMinutes: s.min_notice_min, maxGuests: s.max_guests },
+        };
+      });
+    },
+
+    saveBusiness: function (b) {
+      return sb.from('settings').update({
+        business_name: b.name, phone: b.phone, address: b.address,
+        cancellation_policy_url: b.cancellationPolicyUrl, cancellation_window_hours: b.cancellationWindowHours,
+      }).eq('id', 1).select().single().then(unwrap).then(function (s) { applyBusiness(s); return true; });
+    },
+
+    /** hours: { 0..6: { open: 'HH:MM', close: 'HH:MM' } | null } — null = closed */
+    saveHours: function (hours) {
+      var open = [], closed = [];
+      for (var d = 0; d < 7; d++) {
+        if (hours[d]) { open.push({ dow: d, open_time: hours[d].open, close_time: hours[d].close }); } else { closed.push(d); }
+      }
+      return (open.length ? sb.from('business_hours').upsert(open).then(unwrap) : Promise.resolve()).then(function () {
+        return closed.length ? sb.from('business_hours').delete().in('dow', closed).then(unwrap) : null;
+      }).then(function () { CFG.hours = JSON.parse(JSON.stringify(hours)); return true; });
+    },
+
+    saveRules: function (r) {
+      return sb.from('settings').update({
+        slot_step_min: r.slotStepMinutes, days_ahead: r.daysAhead, min_notice_min: r.minNoticeMinutes, max_guests: r.maxGuests,
+      }).eq('id', 1).then(unwrap).then(function () { Object.assign(CFG.booking, r); return true; });
     },
 
     // ======== who does which services (managers) ========

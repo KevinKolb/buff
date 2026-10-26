@@ -47,7 +47,7 @@ There's no login yet, so don't share the link widely.
 | `js/api.js` | Data layer. It is a **mock** for now (see below) |
 | `js/app.js` | The booking flow |
 | `manage.html`, `js/manage.js` | Client lookup and cancel |
-| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team and staff logins, menu |
+| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team and staff logins, menu, business details, hours and booking rules |
 | `book.html`, `js/book.js` | Staff booking for phone and walk-in clients, with the day's schedule alongside |
 | `account.html`, `js/account.js` | Client sign-in: upcoming and past visits, cancel, update name and mobile |
 | `assets/buff-logo.png` | Logo, taken from a screenshot of buffbeautybar.com |
@@ -60,7 +60,6 @@ There's no login yet, so don't share the link widely.
   - opening hours
   - how long each service takes (current values are estimates)
   - the provider list
-  - the street address (the site shows both 20 and 720 Carondelet St)
 - **Coming next** (these need a backend):
   - a real database and a staff login
   - Stripe card on file, and charging late-cancel and no-show fees

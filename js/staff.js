@@ -24,7 +24,9 @@ window.BuffAPI.ready.then(function () {
     teamMsg: {},
     quals: {},         // { providerId: [serviceId] } who does which services
     qdrafts: {},       // unsaved service ticks, by provider id
-    qOpen: {},         // which providers' service lists are expanded       // per-card status line, by provider id (and menu keys like 'svc:12')
+    qOpen: {},         // which providers' service lists are expanded
+    settings: null,    // Business tab: { business, hours, rules, hasBusiness }
+    bizDraft: {},      // unsaved edits, by part: 'business' | 'hours' | 'rules'       // per-card status line, by provider id (and menu keys like 'svc:12')
     menu: null,        // { services, categories } for the managers' Menu tab
     menuCat: null,     // category being edited on the Menu tab
     auth: 'checking',  // checking → signin → sent | denied | ok
@@ -676,6 +678,105 @@ window.BuffAPI.ready.then(function () {
     }
   }
 
+  // ---------- business details, hours, booking rules (managers) ----------
+  var DAYS = [[1, 'Monday'], [2, 'Tuesday'], [3, 'Wednesday'], [4, 'Thursday'], [5, 'Friday'], [6, 'Saturday'], [0, 'Sunday']];
+
+  function loadSettings() {
+    state.loadError = null;
+    return API.getSettings().then(function (s) {
+      if (s.hasBusiness === undefined) { s.hasBusiness = true; }
+      state.settings = s; render();
+    }, function (err) { showLoadError('Business', err); });
+  }
+
+  function bizCard(part, title, body, note) {
+    var dirty = !!state.bizDraft[part];
+    return '<div class="card form"><div class="b">' + title + '</div>' + (note || '') + body + msgLine('biz:' + part) +
+      '<div class="row-wrap"><button class="btn-primary sm" data-act="biz-save" data-k="' + part + '"' + (dirty ? '' : ' disabled') + '>Save</button>' +
+        (dirty ? '<button class="link sm" data-act="biz-undo" data-k="' + part + '">Undo</button>' : '') + '</div></div>';
+  }
+  function bizField(part, name, label, value, type, extra) {
+    return '<div class="field"><label for="bz-' + name + '">' + label + '</label><input id="bz-' + name + '" data-biz="' + part + '" name="' + name + '" type="' + (type || 'text') + '" value="' + esc(value) + '"' + (extra || '') + '></div>';
+  }
+  function options(name, part, value, list) {
+    return '<select id="bz-' + name + '" data-biz="' + part + '" name="' + name + '">' + list.map(function (o) {
+      return '<option value="' + o[0] + '"' + (+o[0] === +value ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
+    }).join('') + '</select>';
+  }
+
+  function viewBusiness() {
+    if (!isManager()) { return '<h1 class="h1">Business</h1><div class="card pad"><p class="center muted">Only managers can edit business details.</p></div>'; }
+    if (!state.settings) { return '<h1 class="h1">Business</h1>' + (loadErrorView('business') || '<p class="muted center pad" role="status">Loading…</p>'); }
+    var b = state.bizDraft.business || state.settings.business;
+    var h = state.bizDraft.hours || state.settings.hours;
+    var r = state.bizDraft.rules || state.settings.rules;
+
+    var details = state.settings.hasBusiness
+      ? bizField('business', 'name', 'Business name', b.name, 'text', ' maxlength="60"') +
+        bizField('business', 'phone', 'Phone', b.phone, 'tel', ' maxlength="20"') +
+        bizField('business', 'address', 'Address', b.address, 'text', ' maxlength="120"') +
+        bizField('business', 'cancellationPolicyUrl', 'Cancellation policy link', b.cancellationPolicyUrl, 'url') +
+        bizField('business', 'cancellationWindowHours', 'Free cancellation until (hours before the visit)', b.cancellationWindowHours, 'number', ' min="0" max="168" step="1" inputmode="numeric"')
+      : '<p class="notice">Editing these needs a database update (20261026000900_business_details.sql). Until then the site uses: ' + esc(b.name + ', ' + b.phone + ', ' + b.address) + '.</p>';
+
+    var rows = DAYS.map(function (d) {
+      var day = h[d[0]];
+      return '<div class="bz-day"><label class="agree bz-on"><input type="checkbox" data-biz="hours" name="on-' + d[0] + '"' + (day ? ' checked' : '') + '><span class="b">' + d[1] + '</span></label>' +
+        (day
+          ? '<div class="bz-times"><input aria-label="' + d[1] + ' opens" data-biz="hours" name="open-' + d[0] + '" type="time" step="900" value="' + esc(day.open) + '">' +
+              '<span class="muted sm">to</span><input aria-label="' + d[1] + ' closes" data-biz="hours" name="close-' + d[0] + '" type="time" step="900" value="' + esc(day.close) + '"></div>'
+          : '<span class="muted sm">Closed</span>') + '</div>';
+    }).join('');
+
+    var rules = '<div class="field"><label for="bz-daysAhead">Clients can book up to</label>' +
+        options('daysAhead', 'rules', r.daysAhead, [[7, '1 week ahead'], [14, '2 weeks ahead'], [30, '30 days ahead'], [60, '60 days ahead'], [90, '90 days ahead'], [180, '6 months ahead']]) + '</div>' +
+      '<div class="field"><label for="bz-minNoticeMinutes">Minimum notice for online booking</label>' +
+        options('minNoticeMinutes', 'rules', r.minNoticeMinutes, [[0, 'None'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours'], [720, '12 hours'], [1440, '1 day'], [2880, '2 days']]) + '</div>' +
+      '<div class="field"><label for="bz-slotStepMinutes">Offer start times every</label>' +
+        options('slotStepMinutes', 'rules', r.slotStepMinutes, [[5, '5 minutes'], [10, '10 minutes'], [15, '15 minutes'], [20, '20 minutes'], [30, '30 minutes'], [60, 'hour']]) + '</div>' +
+      '<div class="field"><label for="bz-maxGuests">Most guests in one booking</label>' +
+        options('maxGuests', 'rules', r.maxGuests, [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6'], [8, '8'], [10, '10']]) + '</div>';
+
+    return '<h1 class="h1">Business</h1>' +
+      '<p class="muted sm">Changes show on the booking pages the next time they’re opened.</p>' +
+      '<div class="s-two"><section class="s-lists">' +
+        bizCard('business', 'Business details', details) +
+        bizCard('rules', 'Booking rules', rules) +
+      '</section><section class="s-lists">' +
+        bizCard('hours', 'Opening hours', '<div class="bz-days">' + rows + '</div>',
+          '<p class="muted xs">Appointments already booked outside new hours stay on the schedule; move them if needed.</p>') +
+      '</section></div>';
+  }
+
+  function saveSettingsPart(part) {
+    var d = state.bizDraft[part], key = 'biz:' + part, err = null;
+    if (!d) { return; }
+    if (part === 'business') {
+      d.name = String(d.name || '').trim(); d.phone = String(d.phone || '').trim(); d.address = String(d.address || '').trim();
+      d.cancellationPolicyUrl = String(d.cancellationPolicyUrl || '').trim();
+      if (!d.name) { err = 'Please enter the business name.'; }
+      else if (d.phone.replace(/\D/g, '').length < 10) { err = 'Please enter a 10-digit phone number.'; }
+      else if (d.address.length < 5) { err = 'Please enter the address.'; }
+      else if (d.cancellationPolicyUrl && !/^https?:\/\/\S+\.\S+/.test(d.cancellationPolicyUrl)) { err = 'The policy link should start with https://'; }
+      else if (!(d.cancellationWindowHours >= 0 && d.cancellationWindowHours <= 168)) { err = 'Cancellation window should be 0 to 168 hours.'; }
+    } else if (part === 'hours') {
+      DAYS.forEach(function (x) {
+        var day = d[x[0]];
+        if (!err && day && (!day.open || !day.close || day.close <= day.open)) { err = x[1] + ': closing time has to be after opening time.'; }
+      });
+      if (!err && DAYS.every(function (x) { return !d[x[0]]; })) { err = 'At least one day has to be open.'; }
+    }
+    if (err) { state.teamMsg[key] = { err: true, text: err }; render(); return; }
+    state.teamMsg[key] = { text: 'Saving…' }; render();
+    var call = part === 'business' ? API.saveBusiness(d) : part === 'hours' ? API.saveHours(d) : API.saveRules(d);
+    call.then(function () {
+      delete state.bizDraft[part];
+      state.teamMsg[key] = { text: 'Saved.' };
+      state.settings = null;
+      return loadSettings().then(load);
+    }, function () { state.teamMsg[key] = { err: true, text: 'Couldn’t save. Check the values and your connection, then try again.' }; render(); });
+  }
+
   // ---------- sign-in ----------
   function viewAuth() {
     if (state.auth === 'checking') { return '<p class="muted center pad" role="status">Checking sign-in…</p>'; }
@@ -706,6 +807,7 @@ window.BuffAPI.ready.then(function () {
       if (state.auth === 'ok') {
         if (state.tab === 'team') { loadTeam(); }
         if (state.tab === 'menu') { loadMenu(); }
+        if (state.tab === 'business') { loadSettings(); }
         return load();
       }
     }, function () { state.auth = 'signin'; state.signInError = 'Couldn’t reach the server. Check your connection.'; render(); });
@@ -742,7 +844,7 @@ window.BuffAPI.ready.then(function () {
     var main = $('#s-main');
     var sched = $('.s-sched');
     var keep = { top: sched ? sched.scrollTop : null, left: sched ? sched.scrollLeft : 0 };
-    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu }[state.tab]();
+    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, business: viewBusiness }[state.tab]();
     sched = $('.s-sched');
     if (sched) {
       if (keep.top !== null) { sched.scrollTop = keep.top; sched.scrollLeft = keep.left; }
@@ -758,7 +860,7 @@ window.BuffAPI.ready.then(function () {
   }
 
   function tabAllowed(tab) {
-    if (tab === 'team' || tab === 'menu') { return isManager(); }
+    if (tab === 'team' || tab === 'menu' || tab === 'business') { return isManager(); }
     if (tab === 'waitlist') { return canBook(); }
     return true; // schedule, time off
   }
@@ -768,6 +870,7 @@ window.BuffAPI.ready.then(function () {
     state.tab = tab;
     if (tab === 'team' && !state.team) { loadTeam(); }
     if (tab === 'menu' && !state.menu) { loadMenu(); }
+    if (tab === 'business' && !state.settings) { loadSettings(); }
     try { history.replaceState(null, '', '#' + tab); } catch (e) { /* file:// in some browsers */ }
     render();
     var h = $('#s-main h1');
@@ -804,7 +907,9 @@ window.BuffAPI.ready.then(function () {
       el.disabled = true;
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
-    else if (act === 'reload-tab') { state.loadError = null; render(); if (state.tab === 'team') { loadTeam(); } else { loadMenu(); } }
+    else if (act === 'reload-tab') { state.loadError = null; render(); if (state.tab === 'team') { loadTeam(); } else if (state.tab === 'business') { loadSettings(); } else { loadMenu(); } }
+    else if (act === 'biz-save') { saveSettingsPart(el.getAttribute('data-k')); }
+    else if (act === 'biz-undo') { var bk = el.getAttribute('data-k'); delete state.bizDraft[bk]; delete state.teamMsg['biz:' + bk]; render(); }
     else if (act === 'q-save') { saveQuals(el.getAttribute('data-id')); }
     else if (act === 'q-undo') { var qid = el.getAttribute('data-id'); delete state.qdrafts[qid]; delete state.teamMsg['q:' + qid]; render(); }
     else if (/^st-/.test(act)) { staffAction(act, el.getAttribute('data-k')); }
@@ -847,6 +952,21 @@ window.BuffAPI.ready.then(function () {
   document.addEventListener('change', onFormInput);
   function onFormInput(e) {
     var t = e.target;
+    var bpart = t.getAttribute && t.getAttribute('data-biz');
+    if (bpart) {
+      var bd = state.bizDraft[bpart] = state.bizDraft[bpart] || JSON.parse(JSON.stringify(state.settings[bpart]));
+      if (bpart === 'hours') {
+        var m = /^(open|close|on)-(\d)$/.exec(t.name), dow = +m[2];
+        if (m[1] === 'on') { bd[dow] = t.checked ? JSON.parse(JSON.stringify(bd[dow] || state.settings.hours[dow] || { open: '09:00', close: '18:00' })) : null; }
+        else if (bd[dow]) { bd[dow][m[1]] = t.value; }
+      } else {
+        bd[t.name] = t.type === 'number' || t.tagName === 'SELECT' ? +t.value : t.value;
+      }
+      delete state.teamMsg['biz:' + bpart];
+      if (e.type === 'change' && (t.type === 'checkbox' || t.tagName === 'SELECT')) { render(); }
+      else { var card = t.closest('.card'); var sv = card && card.querySelector('[data-act="biz-save"]'); if (sv) { sv.disabled = false; } }
+      return;
+    }
     var qpid = t.getAttribute && t.getAttribute('data-qual');
     if (qpid) {
       if (e.type !== 'change') { return; }
@@ -939,7 +1059,7 @@ window.BuffAPI.ready.then(function () {
 
   function tabFromHash() {
     var t = (location.hash || '').slice(1);
-    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu'].indexOf(t) >= 0 ? t : null;
+    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'business'].indexOf(t) >= 0 ? t : null;
   }
   window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab && state.auth === 'ok') { setTab(t); load(); } });
 
