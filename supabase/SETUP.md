@@ -10,7 +10,9 @@ Everything the live backend needs is in `supabase/migrations/`. These are the st
 
 ## 2. Load the database
 
-Apply the migrations in order:
+**From a phone:** open `supabase/setup-all.sql` on GitHub, tap **Raw**, copy all of it, paste it into Supabase → **SQL Editor** → **New query**, and tap **Run**. It's both migrations in one file.
+
+**With the Supabase connector or CLI:** apply the migrations in order:
 
 1. `20261026000000_init.sql`: tables, row-level security, booking functions
 2. `20261026000100_seed.sql`: menu, hours, providers and settings (copied from `js/config.js`)
