@@ -275,3 +275,30 @@ a.link { display: flex; align-items: center; justify-content: center; }
 .pro-ig { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: var(--slate); background: var(--blush); }
 .pro-ig:hover, .pro-ig:focus-visible { background: #F5D3BE; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Gift cards */
+.g-delivery { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.g-delivery legend { margin-bottom: 8px; }
+.g-opt { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 12px; border: 2px solid var(--blush); cursor: pointer; min-height: 56px; }
+.g-opt.is-on { border-color: var(--slate); }
+.g-opt input { width: 20px; height: 20px; accent-color: var(--slate); flex-shrink: 0; }
+.g-opt > span { display: flex; flex-direction: column; }
+.form textarea { width: 100%; border-radius: 10px; border: 1px solid var(--border, #ddd); padding: 10px 12px; font: inherit; font-size: 16px; resize: vertical; background: #fff; }
+.g-code { letter-spacing: .06em; word-break: break-all; }
+.gc { background: #fff; border: 2px solid var(--slate); border-radius: 18px; padding: 28px 22px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.gc-logo { width: 110px; height: auto; margin-bottom: 6px; }
+.gc-label { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #8A4B1D; }
+.gc-to { font-size: 26px; font-weight: 700; }
+.gc-msg { font-size: 16px; line-height: 1.5; margin: 6px 0; white-space: pre-line; max-width: 34ch; }
+.gc-from { font-size: 14px; color: var(--slate); }
+.gc-value { font-size: 40px; font-weight: 700; margin-top: 10px; }
+.gc-what { font-size: 14px; color: var(--slate); }
+.gc-code { margin-top: 12px; padding: 8px 14px; border: 1px dashed var(--slate); border-radius: 10px; font-weight: 700; letter-spacing: .06em; word-break: break-all; }
+.gc-code span { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+.gc-how { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+.gc-actions { margin-top: 12px; }
+@media print {
+  .top, .site-nav, .no-print, .staff-link { display: none !important; }
+  body, .app, .main { background: #fff !important; }
+  .gc { border-width: 1px; max-width: 5.5in; margin: 0.5in auto; break-inside: avoid; }
+}

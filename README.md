@@ -47,10 +47,11 @@ There's no login yet, so don't share the link widely.
 | `js/api.js` | Data layer. It is a **mock** for now (see below) |
 | `js/app.js` | The booking flow |
 | `manage.html`, `js/manage.js` | Client lookup and cancel |
-| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team (photos, Instagram) and staff logins, menu, specials, business details, hours and booking rules |
+| `staff.html`, `js/staff.js`, `css/staff.css` | Front desk: schedule, waitlist, time off, team (photos, Instagram) and staff logins, menu, specials, gift cards, business details, hours and booking rules |
 | `book.html`, `js/book.js` | Staff booking for phone and walk-in clients, with the day's schedule alongside |
 | `account.html`, `js/account.js` | Client sign-in: upcoming and past visits, cancel, update name and mobile |
 | `services.html`, `js/services.js` | Services, descriptions and prices by category; + starts booking with that service picked |
+| `giftcard.html`, `js/giftcard.js` | A gift card to show or print (opened from the gift link) |
 | `specials.html`, `js/specials.js`, `js/pricing.js` | Specials page; pricing.js works out special prices for display (the database decides the booked price) |
 | `assets/buff-logo.png` | Logo, taken from a screenshot of buffbeautybar.com |
 | `assets/og-image.png`, `assets/*icon*`, `favicon.ico`, `*.webmanifest` | Link-preview image, browser and home-screen icons (blush background so they read in dark mode). Share tags use absolute URLs for `kevinkolb.github.io/buff/`: update them if the site moves to its own domain |
@@ -100,8 +101,8 @@ What it will take:
 
 ### Needs an account or a decision
 
-- **Email sender** (for example Resend): without it, clients and most staff can't get sign-in links.
-- **Card processor:** card on file and no-show fees (Payroc, Helcim or Stripe).
+- **Email sender** (for example Resend): without it, clients and most staff can't get sign-in links. Once it's set up, gift cards and gift receipts should be emailed automatically (for now the confirmation page opens the buyer's own email app with the gift link filled in).
+- **Card processor:** card on file, no-show fees and paying for gift cards online (Payroc, Helcim or Stripe). Until then gift cards start unpaid and the front desk calls the buyer to take payment.
 - **Text messages** (for example Twilio): confirmations, reminders and waitlist alerts. Carrier registration takes 1–3 weeks.
 - **Supabase Pro** before launch: the free plan pauses after a week without activity.
 - **Go-live:** merge into `main`, point GitHub Pages at it, optionally an own domain, remove sample data, and run Supabase's security advisor.

@@ -145,6 +145,10 @@
     return { closed: false, slots: slots };
   }
 
+  function giftPublic(g) {
+    return { code: g.code, services: g.services, guests: g.guests, amount: g.amount, balance: g.amount - g.used, valid: g.status !== 'void',
+      recipientName: g.recipientName, recipientEmail: g.recipientEmail, from: g.from, message: g.message, delivery: g.delivery, createdAt: g.createdAt };
+  }
   function delay(v) { return new Promise(function (res) { setTimeout(function () { res(clone(v)); }, 150); }); }
   function fail(code, message) {
     return new Promise(function (res, rej) { setTimeout(function () { var e = new Error(message); e.code = code; rej(e); }, 150); });
@@ -399,6 +403,41 @@
     saveHours: function (hours) { sync(); db.hours = clone(hours); CFG.hours = db.hours; save(); return delay(true); },
     saveRules: function (r) { sync(); db.rules = clone(r); Object.assign(CFG.booking, db.rules); save(); return delay(true); },
 
+    // ======== gift cards ========
+
+    /** Buy one: { services, guests, delivery: 'recipient'|'self'|'both', buyer: {name, phone, email}, recipient: {name, email}, from, message } → the gift card. */
+    buyGiftCard: function (p) {
+      sync();
+      var amount = 0, ok = p.services.length > 0;
+      p.services.forEach(function (n) { var s = CFG.services.filter(function (x) { return x.name === n; })[0]; if (s) { amount += s.price; } else { ok = false; } });
+      if (!ok) { return fail('bad_services', 'Those services aren’t on the menu.'); }
+      var hex = function () { return Math.floor(Math.random() * 65536).toString(16).toUpperCase().padStart(4, '0'); };
+      var g = { id: Date.now(), code: 'BUFF-' + hex() + '-' + hex() + '-' + hex(), services: p.services.slice(), guests: p.guests || 1, amount: amount * (p.guests || 1), used: 0,
+        status: 'unpaid', delivery: p.delivery, buyerName: p.buyer.name, buyerPhone: p.buyer.phone, buyerEmail: p.buyer.email.toLowerCase(),
+        recipientName: p.recipient.name, recipientEmail: p.delivery === 'self' ? null : p.recipient.email.toLowerCase(), from: p.from || p.buyer.name, message: p.message || '',
+        staffNote: '', createdAt: new Date().toISOString(), paidAt: null };
+      db.giftCards = (db.giftCards || []).concat([g]); save();
+      return delay(giftPublic(g));
+    },
+    /** What the gift link shows, or null. */
+    getGiftCard: function (code) {
+      sync();
+      var g = (db.giftCards || []).filter(function (x) { return x.code === String(code || '').trim().toUpperCase(); })[0];
+      return delay(g ? giftPublic(g) : null);
+    },
+    /** Front desk: every gift card, newest first. */
+    listGiftCards: function () { sync(); return delay((db.giftCards || []).slice().reverse()); },
+    /** Front desk: { status, used, staffNote } */
+    updateGiftCard: function (id, patch) {
+      sync();
+      var g = (db.giftCards || []).filter(function (x) { return x.id === id; })[0];
+      if (!g) { return fail('not_found', 'Gift card not found.'); }
+      if (patch.used != null && (patch.used < 0 || patch.used > g.amount)) { return fail('bad_used', 'More than the card is worth.'); }
+      if (patch.status === 'paid' && g.status !== 'paid') { g.paidAt = new Date().toISOString(); }
+      Object.assign(g, patch); save();
+      return delay(g);
+    },
+
     // ======== specials (managers) ========
 
     /** Every special, including switched-off ones, newest first. */
@@ -571,7 +610,7 @@
     /** Deletes everything saved in this browser (prototype only). */
     resetDemo: function () {
       sync();
-      db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; delete db.clientSession; save();
+      db.bookings = []; db.waitlist = []; db.timeOff = []; db.sampleStatus = {}; db.clients = []; db.giftCards = []; delete db.clientSession; save();
       if (db.providers || db.services || db.categoryOrder || db.staffList || db.qualified || db.business || db.hours || db.rules || db.closed || db.specials) { delete db.providers; delete db.services; delete db.categoryOrder; delete db.staffList; delete db.qualified; delete db.business; delete db.hours; delete db.rules; delete db.closed; delete db.specials; save(); location.reload(); }
       return delay(true);
     },

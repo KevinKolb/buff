@@ -214,3 +214,14 @@
 .s-ig-in { display: flex; align-items: center; gap: 6px; }
 .s-ig-in span { font-weight: 600; color: var(--slate); }
 .s-ig-in input { flex: 1; min-width: 0; }
+
+/* Gift cards tab */
+.s-gc { display: flex; flex-direction: column; gap: 4px; }
+.s-gc-code { letter-spacing: .05em; word-break: break-all; }
+.s-gc .pill { font-size: 10px; flex-shrink: 0; }
+.s-gc-notpaid { background: #C08A5B; color: #fff; }
+.s-gc-paid { background: #2F6B3B; color: #fff; }
+.s-gc-usedup, .s-gc-void { background: #ddd; color: #555; }
+.s-gc-use { display: flex; align-items: center; gap: 4px; }
+.s-gc-use input { width: 96px; min-height: 40px; border-radius: 10px; border: 1px solid var(--border); padding: 6px 8px; font-size: 16px; }
+.s-gc .row-wrap { margin-top: 6px; gap: 8px; }

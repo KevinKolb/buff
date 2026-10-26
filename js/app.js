@@ -31,6 +31,7 @@ window.BuffAPI.ready.then(function () {
     account: null,         // signed-in client: { email, client: { id, name, phone, email } }
     hold: null,            // time held while booking: { date, time, label, expiresAt }
     notice: null,          // shown on step 3, e.g. when a time was just taken
+    gift: { recipientName: '', recipientEmail: '', from: '', message: '', delivery: 'recipient' }, // provider 'gift': buying a gift card
   };
 
   var STEP_LABELS = ['Booking', 'Provider', 'Date & time', 'Your details'];
@@ -47,7 +48,7 @@ window.BuffAPI.ready.then(function () {
   function totals() {
     var mins = 0;
     state.selected.forEach(function (n) { mins += svc(n).mins; });
-    var pr = priceAt(state.date, state.slot && !state.waitlist ? state.slot.time : null);
+    var pr = isGift() ? regularPrice() : priceAt(state.date, state.slot && !state.waitlist ? state.slot.time : null);
     return { mins: mins, price: pr.total * state.guests, regular: pr.subtotal * state.guests, perGuest: pr.total, pricing: pr };
   }
   function money(n) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
@@ -55,7 +56,14 @@ window.BuffAPI.ready.then(function () {
   function isoDate(d) { var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day; }
   function fromISO(iso) { return new Date(iso + 'T00:00:00'); }
   function longDate(iso) { return fromISO(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
-  function providerName(id) { if (id === 'any') { return 'First available'; } return CFG.providers.filter(function (p) { return p.id === id; })[0].name; }
+  // Gift cards are worth the regular price; specials apply when the visit is booked.
+  function isGift() { return state.provider === 'gift'; }
+  function regularPrice() {
+    var lines = state.selected.map(function (n) { return { name: n, regular: svc(n).price, price: svc(n).price, special: '' }; });
+    var sum = lines.reduce(function (m, l) { return m + l.price; }, 0);
+    return { subtotal: sum, total: sum, note: '', quantity: null, lines: lines };
+  }
+  function providerName(id) { if (id === 'any') { return 'First available'; } if (id === 'gift') { return 'Gift card'; } return CFG.providers.filter(function (p) { return p.id === id; })[0].name; }
   var IG_ICON = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>';
   function avatar(p, cls) {
     return '<span class="avatar' + (cls ? ' ' + cls : '') + (p.photo ? ' has-photo' : '') + '">' + (p.photo ? '<img src="' + esc(p.photo) + '" alt="">' : esc(p.initials)) + '</span>';
@@ -67,6 +75,7 @@ window.BuffAPI.ready.then(function () {
       minus: '<path d="M5 12h14"/>',
       star: '<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>',
       card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+      gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v9H5v-9M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
       clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     };
     return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
@@ -289,10 +298,15 @@ window.BuffAPI.ready.then(function () {
         (on ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button>' + ig + '</li>';
     }).join('');
     var hidden = CFG.providers.length - qualifiedPros().length;
+    var gOn = isGift();
+    var gift = '<h2 class="label">Or give it as a gift</h2><ul class="stack"><li class="pro-li"><button class="pro' + (gOn ? ' is-on' : '') + '" data-act="pro" data-v="gift" aria-pressed="' + gOn + '">' +
+      '<span class="avatar">' + icon('gift') + '</span>' +
+      '<span class="svc-main"><span class="svc-name">Gift card</span><span class="muted sm">' + (state.selected.length > 1 ? 'These services' : esc(state.selected[0] || 'This service')) + (state.guests > 1 ? ' for ' + state.guests : '') + ', emailed or printed · ' + money(regularPrice().total * state.guests) + '</span></span>' +
+      (gOn ? '<span class="tick is-on">' + icon('check') + '</span>' : '') + '</button></li></ul>';
     return '<h1 class="h1">Who would you like?</h1>' +
       (hidden ? '<p class="muted sm">Showing the providers who do ' + (state.selected.length > 1 ? 'all of ' : '') + esc(state.selected.join(' + ')) + '.</p>' : '') +
       (state.guests > 1 ? '<p class="muted sm">With ' + state.guests + ' guests, your pick is for you — we’ll pair your guests with other pros working at the same time.</p>' : '') +
-      '<ul class="stack">' + rows + '</ul>';
+      '<ul class="stack">' + rows + '</ul>' + gift;
   }
 
   function viewTime() {
@@ -356,6 +370,12 @@ window.BuffAPI.ready.then(function () {
 
   function summaryCard() {
     var t = totals();
+    if (isGift()) {
+      return '<div class="card summary"><div class="label">Gift card</div>' +
+        '<div class="b lg">' + money(t.price) + '</div>' +
+        '<div>' + esc(state.selected.join(' + ')) + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + '</div>' +
+        '<div class="muted sm">They pick the day, time and provider when they book. Good for these services or ' + money(t.price) + ' toward anything.</div></div>';
+    }
     var when = state.waitlist ? longDate(state.date) + ' · waitlist' : longDate(state.date) + ' at ' + state.slot.label;
     return '<div class="card summary"><div class="label">Your visit</div>' +
       '<div class="b lg">' + esc(when) + '</div>' +
@@ -366,7 +386,50 @@ window.BuffAPI.ready.then(function () {
 
   var changeLink = '<button class="link sm change-link" data-act="change-time">Change date or time</button>';
 
+  function giftField(id, label, type, ph, hint, ac) {
+    var err = state.errors['g-' + id];
+    var tag = type === 'textarea'
+      ? '<textarea id="g-' + id + '" name="' + id + '" rows="3" maxlength="400" placeholder="' + esc(ph) + '"' + (err ? ' aria-invalid="true"' : '') + '>' + esc(state.gift[id]) + '</textarea>'
+      : '<input id="g-' + id + '" name="' + id + '" type="' + type + '"' + (ac ? ' autocomplete="' + ac + '"' : '') + ' placeholder="' + esc(ph) + '" value="' + esc(state.gift[id]) + '"' + (err ? ' aria-invalid="true" aria-describedby="ge-' + id + '"' : '') + '>';
+    return '<div class="field' + (err ? ' has-err' : '') + '"><label for="g-' + id + '">' + label + '</label>' + tag +
+      (err ? '<span class="err" id="ge-' + id + '">' + esc(err) + '</span>' : (hint ? '<span class="muted xs">' + hint + '</span>' : '')) + '</div>';
+  }
+
+  function viewGift() {
+    var g = state.gift;
+    var opt = function (v, label, sub) {
+      return '<label class="g-opt' + (g.delivery === v ? ' is-on' : '') + '"><input type="radio" name="g-delivery" value="' + v + '"' + (g.delivery === v ? ' checked' : '') + '>' +
+        '<span><span class="b sm">' + label + '</span><span class="muted xs">' + sub + '</span></span></label>';
+    };
+    return '<h1 class="h1">Gift card</h1>' + summaryCard() +
+      '<form id="gift" class="card form" novalidate><div class="b">Who it’s for</div>' +
+        giftField('recipientName', 'Their name', 'text', 'First and last', '', 'off') +
+        '<fieldset class="g-delivery"><legend class="b sm">How should they get it?</legend>' +
+          opt('recipient', 'Email it to them', 'We send it to their inbox') +
+          opt('self', 'Email it to me to print', 'Print it and give it in person') +
+          opt('both', 'Both', 'Email them, and send me a copy to print') +
+        '</fieldset>' +
+        (g.delivery === 'self' ? '' : giftField('recipientEmail', 'Their email', 'email', 'them@email.com', '', 'off')) +
+        giftField('message', 'Message (optional)', 'textarea', 'Happy birthday! Treat yourself.') +
+        giftField('from', 'From', 'text', state.client.name || 'Your name', 'How your name shows on the card.', 'off') +
+      '</form>' +
+      '<form id="details" class="card form" novalidate><div class="b">Your details</div>' +
+        field('name', 'Name', 'text', 'name', 'First and last') +
+        field('phone', 'Mobile', 'tel', 'tel', '(504) 555-0123', 'In case we have a question about your order') +
+        (state.account
+          ? '<div class="field"><label>Email</label><div class="a-email">' + esc(state.account.email) + '</div></div>'
+          : field('email', 'Email', 'email', 'email', 'you@email.com', 'We send your receipt here.')) +
+      '</form>' +
+      '<div class="card form">' +
+        '<div class="row-between"><span class="b sm">Payment</span><span class="muted xs">Encrypted</span></div>' +
+        '<div class="card-mock" aria-label="Card details (coming soon)">' + icon('card') + '<span>Card number · MM/YY · CVC</span></div>' +
+        '<p class="muted xs">Coming soon: online payment connects once our card processor is set up. For now we’ll call you to take payment, and the gift card is good once it’s paid.</p>' +
+      '</div>' +
+      (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
+  }
+
   function viewDetails() {
+    if (isGift()) { return viewGift(); }
     var agreeErr = state.errors.agree;
     return '<h1 class="h1">Almost done</h1>' + summaryCard() + changeLink + (state.waitlist ? '' : holdNote()) +
       '<form id="details" class="card form" novalidate>' +
@@ -391,7 +454,32 @@ window.BuffAPI.ready.then(function () {
       (state.errors.form ? '<p class="notice" role="alert">' + esc(state.errors.form) + '</p>' : '');
   }
 
+  function giftLink(code) { return location.origin + location.pathname.replace(/[^/]*$/, '') + 'giftcard.html?code=' + encodeURIComponent(code); }
+  function mailto(to, subject, body) { return 'mailto:' + encodeURIComponent(to || '') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body); }
+
+  function viewGiftDone() {
+    var r = state.result, link = giftLink(r.code), biz = CFG.business.name;
+    var what = r.services.join(' + ') + (r.guests > 1 ? ' for ' + r.guests : '');
+    var toThem = mailto(r.recipientEmail, 'A gift for you from ' + r.from,
+      'Hi ' + r.recipientName + ',\n\n' + (r.message ? r.message + '\n\n' : '') + 'Here’s a ' + money(r.amount) + ' gift card to ' + biz + ' for ' + what + '.\n\n' +
+      'Your gift card: ' + link + '\nGift card code: ' + r.code + '\n\nBook at ' + location.origin + location.pathname.replace(/[^/]*$/, '') + ' or call ' + CFG.business.phone + '.\n\n' + r.from);
+    var toMe = mailto(state.account ? state.account.email : state.client.email, 'Gift card for ' + r.recipientName + ' (' + biz + ')',
+      'Gift card for ' + r.recipientName + ': ' + money(r.amount) + ', ' + what + '.\nCode: ' + r.code + '\n\nOpen this link to print it: ' + link + '&print=1');
+    var them = r.delivery !== 'self', me = r.delivery !== 'recipient';
+    return '<div class="done">' +
+      '<div class="done-badge">' + icon('gift') + '</div>' +
+      '<h1 class="h1 center">Gift card ready</h1>' +
+      '<p class="center muted">' + money(r.amount) + ' for ' + esc(r.recipientName) + '. We’ll call you at ' + esc(state.client.phone) + ' to take payment; it’s good to use once paid.</p>' +
+      '<div class="card summary center"><div class="label">Gift card code</div><div class="b lg g-code">' + esc(r.code) + '</div><div class="muted sm">' + esc(what) + '</div></div>' +
+      (them ? '<a class="btn-primary as-link" href="' + esc(toThem) + '">Email it to ' + esc(r.recipientName) + '</a>' : '') +
+      (me ? '<a class="' + (them ? 'btn-outline' : 'btn-primary') + ' as-link" href="' + esc(toMe) + '">Email it to me to print</a>' : '') +
+      '<a class="btn-outline as-link" href="' + esc(link) + '&print=1" target="_blank" rel="noopener">Print it now</a>' +
+      '<p class="muted xs center">The email buttons open your email app with the gift card link filled in, so it comes from you. Anyone with the link or code can use the card, so send it only to them.</p>' +
+      '<button class="link" data-act="restart">Done</button></div>';
+  }
+
   function viewDone() {
+    if (isGift()) { return viewGiftDone(); }
     var r = state.result;
     var wl = state.waitlist;
     return '<div class="done">' +
@@ -411,7 +499,7 @@ window.BuffAPI.ready.then(function () {
   function canContinue() {
     if (state.step === 1) { return state.selected.length > 0 && !comboProblem(); }
     if (state.step === 2) { return true; }
-    if (state.step === 3) { return !!state.slot || state.waitlist; }
+    if (state.step === 3) { return !!state.slot || state.waitlist || isGift(); }
     if (state.step === 4) { return !state.submitting; }
     return false;
   }
@@ -424,7 +512,7 @@ window.BuffAPI.ready.then(function () {
       return '<li class="row-between"><span>' + esc(l.name) + (l.special ? '<span class="muted xs"> · ' + esc(l.special) + '</span>' : '') + '</span>' +
         '<span class="muted">' + (l.price < l.regular ? '<s class="was">' + money(l.regular) + '</s> ' : '') + money(l.price) + (svc(l.name).priceNote || '') + '</span></li>';
     }).join('') + (t.pricing.quantity ? '<li class="row-between"><span>' + esc(t.pricing.quantity.name) + '</span><span class="muted">−' + money(t.pricing.quantity.amount) + '</span></li>' : '');
-    var when = state.waitlist ? longDate(state.date) + ' · waitlist' : state.slot ? longDate(state.date) + ' at ' + state.slot.label : '';
+    var when = isGift() ? 'Gift card' : state.waitlist ? longDate(state.date) + ' · waitlist' : state.slot ? longDate(state.date) + ' at ' + state.slot.label : '';
     return '<div class="label">Your visit</div><ul class="foot-list">' + rows + '</ul>' +
       '<p class="sm">' + esc(providerName(state.provider)) + (state.guests > 1 ? ' · ' + state.guests + ' guests' : '') + '</p>' +
       (when ? '<p class="b sm">' + esc(when) + '</p>' : '');
@@ -436,7 +524,7 @@ window.BuffAPI.ready.then(function () {
     var prog = $('#progress');
     prog.hidden = s >= 5;
     if (s < 5) {
-      $('#step-label').textContent = STEP_LABELS[s - 1];
+      $('#step-label').textContent = s === 4 && isGift() ? 'Gift card' : STEP_LABELS[s - 1];
       $('#step-count').textContent = 'Step ' + s + ' of 4';
       $('#bar-fill').style.width = (s * 25) + '%';
     }
@@ -460,7 +548,7 @@ window.BuffAPI.ready.then(function () {
       $('#foot-detail').innerHTML = footDetail();
       var btn = $('#next');
       btn.disabled = !canContinue();
-      btn.textContent = s === 4 ? (state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : 'Book now')) : 'Continue';
+      btn.textContent = s === 4 ? (isGift() ? (state.submitting ? 'Saving…' : 'Buy gift card') : state.submitting ? 'Booking…' : (state.waitlist ? 'Join waitlist' : 'Book now')) : 'Continue';
     }
   }
 
@@ -477,7 +565,7 @@ window.BuffAPI.ready.then(function () {
       dropHold(); state.slots = null; state.slot = null; render();
     }
     else if (act === 'guests') { state.guests = Math.max(1, Math.min(CFG.booking.maxGuests, state.guests + +v)); dropHold(); state.slots = null; state.slot = null; render(); }
-    else if (act === 'pro') { if (v !== state.provider) { dropHold(); state.slots = null; state.slot = null; } state.provider = v; render(); }
+    else if (act === 'pro') { if (v !== state.provider) { dropHold(); state.slots = null; state.slot = null; state.waitlist = false; state.errors = {}; } state.provider = v; render(); }
     else if (act === 'date') { state.date = v; state.notice = null; loadSlots(); }
     else if (act === 'slot') {
       state.slot = state.slots.slots.filter(function (x) { return x.time === v; })[0];
@@ -506,21 +594,27 @@ window.BuffAPI.ready.then(function () {
     var t = e.target;
     if (t.id === 'occ-other') { state.client.occasion = t.value || ' '; return; }
     if (t.form && t.form.id === 'details' && t.name) { state.client[t.name] = t.value; }
+    if (t.form && t.form.id === 'gift' && t.name && t.name !== 'g-delivery') { state.gift[t.name] = t.value; }
     if (t.id === 'f-agree') { state.client.agree = t.checked; }
   });
-  document.addEventListener('change', function (e) { if (e.target.id === 'f-agree') { state.client.agree = e.target.checked; } });
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'f-agree') { state.client.agree = e.target.checked; }
+    if (e.target.name === 'g-delivery') { state.gift.delivery = e.target.value; render(); var r = document.querySelector('input[name="g-delivery"]:checked'); if (r) { r.focus(); } }
+  });
 
   function restart() {
     dropHold();
     state.step = 1; state.selected = []; state.guests = 1; state.provider = 'any'; state.date = null; state.slot = null; state.slots = null; state.waitlist = false; state.result = null; state.errors = {}; state.notice = null;
     state.client = { name: '', phone: '', email: '', note: '', agree: false, occasion: '' };
+    state.gift = { recipientName: '', recipientEmail: '', from: '', message: '', delivery: 'recipient' };
+    if (state.account) { state.client.name = state.account.client.name || ''; state.client.phone = state.account.client.phone || ''; state.client.email = state.account.email; }
   }
 
   // On-screen back arrow: use the browser's history when the previous step is
   // the entry behind us, so Back and the arrow always agree.
   function stepBack() {
     if (history.state && history.state.buffStep === state.step && state.step > 1) { history.back(); }
-    else { go(Math.max(1, state.step - 1), { replace: true }); }
+    else { go(Math.max(1, state.step === 4 && isGift() ? 2 : state.step - 1), { replace: true }); }
   }
   $('#back').addEventListener('click', stepBack);
 
@@ -530,7 +624,8 @@ window.BuffAPI.ready.then(function () {
       restart(); go(1, { replace: true }); return;
     }
     if (s > 1 && !state.selected.length) { s = 1; }
-    if (s > 3 && !state.slot && !state.waitlist) { s = 3; }
+    if (isGift() && s === 3) { s = state.step === 4 ? 2 : 4; } // gift cards skip the date and time
+    if (s > 3 && !state.slot && !state.waitlist && !isGift()) { s = 3; }
     if (asked === state.step && s > 1) { history.back(); return; } // duplicate entry (e.g. after "time was taken")
     if (s !== asked) { try { history.replaceState({ buffStep: s }, ''); } catch (err) { /* ignore */ } }
     go(s, { fromHistory: true });
@@ -539,6 +634,7 @@ window.BuffAPI.ready.then(function () {
 
   $('#next').addEventListener('click', function () {
     if (!canContinue()) { return; }
+    if (state.step === 2 && isGift()) { go(4); return; }
     if (state.step === 2) {
       ensureDate(); // default to today-or-next-open day so times show immediately
       go(3); loadSlots(); return;
@@ -557,7 +653,39 @@ window.BuffAPI.ready.then(function () {
     return Object.keys(e).length === 0;
   }
 
+  function validateGift() {
+    var g = state.gift, e = {};
+    if (!g.recipientName.trim()) { e['g-recipientName'] = 'Please enter their name.'; }
+    if (g.delivery !== 'self' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.recipientEmail.trim())) { e['g-recipientEmail'] = 'Please enter their email.'; }
+    var c = state.client;
+    if (c.name.trim().split(/\s+/).length < 2) { e.name = 'Please enter your first and last name.'; }
+    if (c.phone.replace(/\D/g, '').length < 10) { e.phone = 'Please enter a 10-digit mobile number.'; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.trim())) { e.email = 'Please enter a valid email.'; }
+    state.errors = e;
+    return Object.keys(e).length === 0;
+  }
+
+  function submitGift() {
+    if (!validateGift()) {
+      render();
+      var first = document.querySelector('[aria-invalid="true"]');
+      if (first) { first.focus(); }
+      return;
+    }
+    state.submitting = true; render();
+    var g = state.gift, c = state.client;
+    API.buyGiftCard({
+      services: state.selected.slice(), guests: state.guests, delivery: g.delivery,
+      buyer: { name: c.name.trim(), phone: c.phone.trim(), email: c.email.trim() },
+      recipient: { name: g.recipientName.trim(), email: g.delivery === 'self' ? '' : g.recipientEmail.trim() },
+      from: g.from.trim() || c.name.trim(), message: g.message.trim(),
+    }).then(function (res) { state.submitting = false; state.result = res; go(5); }, function () {
+      state.submitting = false; state.errors = { form: 'Something went wrong. Please try again or call us.' }; render();
+    });
+  }
+
   function submit() {
+    if (isGift()) { submitGift(); return; }
     if (!validate()) {
       render();
       var first = document.querySelector('[aria-invalid="true"], .agree.has-err input');

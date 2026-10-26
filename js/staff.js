@@ -33,6 +33,9 @@ window.BuffAPI.ready.then(function () {
     menu: null,        // { services, categories } for the managers' Menu tab
     menuCat: null,     // category being edited on the Menu tab
     specials: null,    // managers' Specials tab
+    gifts: null,       // Gift cards tab
+    giftQ: '',         // gift card search
+    giftUse: {},       // amount being used, by gift card id
     spEdit: null,      // special being added or edited
     auth: 'checking',  // checking → signin → sent | denied | ok
     staff: null,       // { email, role, providerId }
@@ -916,6 +919,60 @@ window.BuffAPI.ready.then(function () {
     }, function () { state.teamMsg[key] = { err: true, text: 'Couldn’t save. Check the values and your connection, then try again.' }; render(); });
   }
 
+  // ---------- gift cards (managers and reservationists) ----------
+  function loadGifts() {
+    state.loadError = null;
+    return API.listGiftCards().then(function (list) { state.gifts = list; render(); },
+      function (err) { showLoadError('Gift cards', err); });
+  }
+  function giftById(id) { return (state.gifts || []).filter(function (g) { return String(g.id) === String(id); })[0]; }
+
+  function viewGifts() {
+    if (!canBook()) { return '<h1 class="h1">Gift cards</h1><div class="card pad"><p class="center muted">Only managers and reservationists can see gift cards.</p></div>'; }
+    if (!state.gifts) { return '<h1 class="h1">Gift cards</h1>' + (loadErrorView('gifts') || '<p class="muted center pad" role="status">Loading…</p>'); }
+    var words = state.giftQ.toLowerCase().split(/\s+/).filter(Boolean);
+    var list = state.gifts.filter(function (g) {
+      var hay = [g.code, g.recipientName, g.recipientEmail, g.buyerName, g.buyerEmail, g.buyerPhone, g.buyerPhone.replace(/\D/g, '')].join(' ').toLowerCase();
+      return words.every(function (w) { return hay.indexOf(w) >= 0; });
+    });
+    var unpaid = state.gifts.filter(function (g) { return g.status === 'unpaid'; }).length;
+    var rows = list.slice(0, 100).map(function (g) {
+      var bal = g.amount - g.used, id = esc(g.id);
+      var tag = g.status === 'void' ? 'Void' : g.status === 'unpaid' ? 'Not paid' : bal <= 0 ? 'Used up' : 'Paid';
+      var acts = g.status === 'void' ? '' :
+        (g.status === 'unpaid' ? '<button class="btn-primary sm" data-act="gc-paid" data-v="' + id + '">Mark paid</button>' : '') +
+        (g.status === 'paid' && bal > 0 ? '<div class="s-gc-use"><label class="sr-only" for="gc-use-' + id + '">Amount used</label><span aria-hidden="true">$</span>' +
+          '<input id="gc-use-' + id + '" data-gc-use="' + id + '" type="number" inputmode="decimal" min="0" max="' + bal + '" step="0.01" placeholder="' + bal + '" value="' + esc(state.giftUse[g.id] || '') + '">' +
+          '<button class="btn-outline sm" data-act="gc-use" data-v="' + id + '">Use</button></div>' : '') +
+        '<button class="btn-text-danger sm" data-act="gc-void" data-v="' + id + '">Void</button>';
+      return '<li class="card pad-sm s-gc">' +
+        '<div class="row-between"><div class="b s-gc-code">' + esc(g.code) + '</div><span class="pill s-gc-' + tag.replace(/\s/g, '').toLowerCase() + '">' + tag + '</span></div>' +
+        '<div class="sm">For <b>' + esc(g.recipientName) + '</b>' + (g.recipientEmail ? ' · ' + esc(g.recipientEmail) : '') + '</div>' +
+        '<div class="sm">' + esc(g.services.join(' + ')) + (g.guests > 1 ? ' · ' + g.guests + ' guests' : '') + '</div>' +
+        '<div class="sm">' + money(g.amount) + (g.used ? ' · <b>' + money(bal) + ' left</b>' : '') + '</div>' +
+        '<div class="muted xs">Bought by ' + esc(g.buyerName) + ' · <a href="tel:' + esc(g.buyerPhone.replace(/[^\d+]/g, '')) + '">' + esc(g.buyerPhone) + '</a> · ' + esc(g.buyerEmail) +
+          ' · ' + esc(new Date(g.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })) + '</div>' +
+        '<div class="muted xs"><a href="giftcard.html?code=' + encodeURIComponent(g.code) + '" target="_blank" rel="noopener">Open the gift card</a></div>' +
+        msgLine('gc:' + g.id) +
+        (acts ? '<div class="row-wrap">' + acts + '</div>' : '') + '</li>';
+    }).join('');
+    return '<h1 class="h1">Gift cards</h1>' +
+      '<p class="muted sm">Clients buy these on the booking page. Until online payment is set up, call the buyer to take payment, then mark it paid. When someone uses a card, enter the amount.' +
+        (unpaid ? ' <b>' + unpaid + ' waiting for payment.</b>' : '') + '</p>' +
+      '<div class="field"><label for="gc-q">Find a gift card</label><input id="gc-q" type="search" autocomplete="off" placeholder="Code, name, email or phone" value="' + esc(state.giftQ) + '"></div>' +
+      (rows ? '<ul class="stack">' + rows + '</ul>' : '<div class="card pad"><p class="center muted">' + (state.gifts.length ? 'No gift cards match.' : 'No gift cards yet.') + '</p></div>');
+  }
+
+  function giftUpdate(id, patch, done) {
+    var key = 'gc:' + id;
+    state.teamMsg[key] = { text: 'Saving…' }; render();
+    API.updateGiftCard(giftById(id).id, patch).then(function () {
+      state.teamMsg[key] = { text: done };
+      delete state.giftUse[id];
+      return loadGifts();
+    }, function () { state.teamMsg[key] = { err: true, text: 'Couldn’t save. Check your connection and try again.' }; render(); });
+  }
+
   // ---------- specials (managers) ----------
   function loadSpecials() {
     state.loadError = null;
@@ -1050,6 +1107,7 @@ window.BuffAPI.ready.then(function () {
         if (state.tab === 'menu') { loadMenu(); }
         if (state.tab === 'business') { loadSettings(); }
         if (state.tab === 'specials') { loadSpecials(); }
+        if (state.tab === 'gifts') { loadGifts(); }
         return load();
       }
     }, function () { state.auth = 'signin'; state.signInError = 'Couldn’t reach the server. Check your connection.'; render(); });
@@ -1086,7 +1144,7 @@ window.BuffAPI.ready.then(function () {
     var main = $('#s-main');
     var sched = $('.s-sched');
     var keep = { top: sched ? sched.scrollTop : null, left: sched ? sched.scrollLeft : 0 };
-    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, specials: viewSpecials, business: viewBusiness }[state.tab]();
+    main.innerHTML = { schedule: viewSchedule, waitlist: viewWaitlist, timeoff: viewTimeOff, team: viewTeam, menu: viewMenu, specials: viewSpecials, gifts: viewGifts, business: viewBusiness }[state.tab]();
     sched = $('.s-sched');
     if (sched) {
       if (keep.top !== null) { sched.scrollTop = keep.top; sched.scrollLeft = keep.left; }
@@ -1103,7 +1161,7 @@ window.BuffAPI.ready.then(function () {
 
   function tabAllowed(tab) {
     if (tab === 'team' || tab === 'menu' || tab === 'specials' || tab === 'business') { return isManager(); }
-    if (tab === 'waitlist') { return canBook(); }
+    if (tab === 'waitlist' || tab === 'gifts') { return canBook(); }
     return true; // schedule, time off
   }
 
@@ -1114,6 +1172,7 @@ window.BuffAPI.ready.then(function () {
     if (tab === 'menu' && !state.menu) { loadMenu(); }
     if (tab === 'business' && !state.settings) { loadSettings(); }
     if (tab === 'specials' && !state.specials) { loadSpecials(); }
+    if (tab === 'gifts') { loadGifts(); }
     try { history.replaceState(null, '', '#' + tab); } catch (e) { /* file:// in some browsers */ }
     render();
     var h = $('#s-main h1');
@@ -1150,7 +1209,7 @@ window.BuffAPI.ready.then(function () {
       el.disabled = true;
       API.decideTimeOff(el.getAttribute('data-id'), v).then(load);
     }
-    else if (act === 'reload-tab') { state.loadError = null; render(); if (state.tab === 'team') { loadTeam(); } else if (state.tab === 'business') { loadSettings(); } else if (state.tab === 'specials') { loadSpecials(); } else { loadMenu(); } }
+    else if (act === 'reload-tab') { state.loadError = null; render(); if (state.tab === 'team') { loadTeam(); } else if (state.tab === 'business') { loadSettings(); } else if (state.tab === 'specials') { loadSpecials(); } else if (state.tab === 'gifts') { loadGifts(); } else { loadMenu(); } }
     else if (act === 'closed-add') { markClosed(state.closedDraft.date, state.closedDraft.label); }
     else if (act === 'closed-sugg') { markClosed(v, el.getAttribute('data-k')); }
     else if (act === 'closed-remove') {
@@ -1158,6 +1217,14 @@ window.BuffAPI.ready.then(function () {
       API.removeClosedDate(v).then(function () { delete state.closedCounts[v]; state.teamMsg.closed = { text: 'Reopened.' }; return loadClosed(); });
     }
     else if (act === 'biz-save') { saveSettingsPart(el.getAttribute('data-k')); }
+    else if (act === 'gc-paid') { giftUpdate(v, { status: 'paid' }, 'Marked paid.'); }
+    else if (act === 'gc-void') { if (confirm('Void gift card ' + giftById(v).code + '? It can’t be used after this.')) { giftUpdate(v, { status: 'void' }, 'Voided.'); } }
+    else if (act === 'gc-use') {
+      var gc = giftById(v), left = gc.amount - gc.used, amt = Math.round(parseFloat(state.giftUse[v] || '') * 100) / 100;
+      if (!(amt > 0)) { state.teamMsg['gc:' + v] = { err: true, text: 'Enter the amount used.' }; render(); return; }
+      if (amt > left + 0.001) { state.teamMsg['gc:' + v] = { err: true, text: 'Only ' + money(left) + ' is left on this card.' }; render(); return; }
+      giftUpdate(v, { used: Math.round((gc.used + amt) * 100) / 100 }, money(amt) + ' used. ' + money(Math.round((left - amt) * 100) / 100) + ' left.');
+    }
     else if (act === 'sp-new') { state.spEdit = newSpecial(); delete state.teamMsg['sp-list']; render(); var n = $('#sp-name'); if (n) { n.focus(); } }
     else if (act === 'sp-edit') { state.spEdit = JSON.parse(JSON.stringify(spById(v))); ['startTime', 'endTime', 'startDate', 'endDate'].forEach(function (k) { state.spEdit[k] = state.spEdit[k] || ''; }); state.spEdit.allSvc = !state.spEdit.services.length; delete state.teamMsg['sp-list']; render(); window.scrollTo(0, 0); }
     else if (act === 'sp-cancel') { state.spEdit = null; delete state.teamMsg.sp; render(); }
@@ -1224,6 +1291,13 @@ window.BuffAPI.ready.then(function () {
     }
     if (t.id === 'cl-date') { state.closedDraft.date = t.value; delete state.teamMsg.closed; return; }
     if (t.id === 'cl-label') { state.closedDraft.label = t.value; return; }
+    if (t.id === 'gc-q') {
+      state.giftQ = t.value; render();
+      var q = $('#gc-q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+      return;
+    }
+    var gu = t.getAttribute && t.getAttribute('data-gc-use');
+    if (gu) { state.giftUse[gu] = t.value; return; }
     var spk = t.getAttribute && t.getAttribute('data-sp');
     if (spk && state.spEdit) {
       var sd = state.spEdit, redraw = e.type === 'change';
@@ -1343,7 +1417,7 @@ window.BuffAPI.ready.then(function () {
 
   function tabFromHash() {
     var t = (location.hash || '').slice(1);
-    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'specials', 'business'].indexOf(t) >= 0 ? t : null;
+    return ['schedule', 'waitlist', 'timeoff', 'team', 'menu', 'specials', 'gifts', 'business'].indexOf(t) >= 0 ? t : null;
   }
   window.addEventListener('hashchange', function () { var t = tabFromHash(); if (t && t !== state.tab && state.auth === 'ok') { setTab(t); load(); } });
 

@@ -124,6 +124,12 @@
 
   function publicProvider(p) { return { id: p.id, name: p.name, initials: p.initials, blurb: p.blurb, photo: p.photo || '', instagram: p.instagram || '' }; }
 
+  function fromGiftRow(x) {
+    return { id: x.id, code: x.code, services: x.services, guests: x.guests, amount: +x.amount, used: +x.used, status: x.status, delivery: x.delivery,
+      buyerName: x.buyer_name, buyerPhone: x.buyer_phone, buyerEmail: x.buyer_email, recipientName: x.recipient_name, recipientEmail: x.recipient_email,
+      from: x.from_name, message: x.message, staffNote: x.staff_note, createdAt: x.created_at, paidAt: x.paid_at };
+  }
+
   // specials: the database stores service ids; the pages work with names
   var serviceNames = {};
   function fromSpecialRow(x) {
@@ -400,6 +406,21 @@
       return sb.from('settings').update({
         slot_step_min: r.slotStepMinutes, days_ahead: r.daysAhead, min_notice_min: r.minNoticeMinutes, max_guests: r.maxGuests,
       }).eq('id', 1).then(unwrap).then(function () { Object.assign(CFG.booking, r); return true; });
+    },
+
+    // ======== gift cards ========
+
+    buyGiftCard: function (p) { return sb.rpc('buy_gift_card', { p: p }).then(unwrap); },
+    getGiftCard: function (code) { return sb.rpc('get_gift_card', { p_code: code }).then(unwrap); },
+    listGiftCards: function () {
+      return sb.from('gift_cards').select('*').order('created_at', { ascending: false }).limit(500).then(unwrap).then(function (rows) { return rows.map(fromGiftRow); });
+    },
+    updateGiftCard: function (id, patch) {
+      var row = {};
+      if (patch.status) { row.status = patch.status; if (patch.status === 'paid') { row.paid_at = new Date().toISOString(); } }
+      if (patch.used != null) { row.used = patch.used; }
+      if (patch.staffNote != null) { row.staff_note = patch.staffNote; }
+      return sb.from('gift_cards').update(row).eq('id', id).select().single().then(unwrap).then(fromGiftRow);
     },
 
     // ======== specials (managers) ========
